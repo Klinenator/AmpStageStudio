@@ -1,7 +1,26 @@
 # AmpStageStudio
 
-`AmpStageStudio` is a separate experiment repo for circuit-inspired guitar amp
-section modeling without neural networks.
+Circuit-inspired guitar amp modeling sandbox with swappable preamp, power tube, and pedal stages.
+
+`AmpStageStudio` is an experimental guitar amp simulator built around explicit DSP building blocks instead of neural captures. The project is aimed at quickly auditioning amp families, mixing preamp and power-section combinations, comparing against NAM reference renders, and tweaking voicing live from a browser UI.
+
+## What it does
+
+- models named preamp sections such as Fender, Marshall, Vox, and Mesa/Boogie-style voices
+- lets you pair those preamps with selectable power-tube families: `6V6`, `6L6`, `EL34`, `EL84`
+- places front-end effects like `klon` and `tubescreamer` before the amp
+- supports offline A/B rendering from WAV files
+- supports live audio input with PortAudio
+- supports live browser control through a lightweight local web UI
+
+## Project status
+
+Current project shape:
+- preamp voicing is file-driven through `preamps/*.preamp`
+- amp presets are convenience bundles through `amps/*.amp`
+- power stage is selectable and independently overridable
+- effect, preamp, and power controls can be adjusted live
+- NAM offline rendering is available for reference comparisons when `NeuralAmpModelerCore` is checked out locally
 
 Current focus:
 - prototype amp-specific preamp sections
@@ -10,6 +29,41 @@ Current focus:
 - audition it offline with generated WAV files
 - run the stage chain live from an audio interface when PortAudio is available
 - build toward modular amp sections like preamp, tone stack, and power amp
+
+## Quick start
+
+Build:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j"$(sysctl -n hw.ncpu)"
+```
+
+Offline render:
+
+```bash
+./build/tube_stage_test \
+  --input-wav "Dry Guitar.wav" \
+  --preamp fender_deluxe_reverb \
+  --power-tube 6V6 \
+  --output-prefix dry_guitar_deluxe
+```
+
+Live run:
+
+```bash
+./build/amp_stage_live \
+  --device "Scarlett" \
+  --preamp fender_deluxe_reverb \
+  --power-tube 6V6 \
+  --control-file web/live_state.cfg
+```
+
+Web UI:
+
+```bash
+python3 web/server.py --control-file web/live_state.cfg
+```
 
 ## Current files
 
