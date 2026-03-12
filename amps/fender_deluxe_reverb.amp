@@ -1,0 +1,8 @@
+# Fender Deluxe Reverb-inspired single-stage voicing
+name = fender_deluxe_reverb
+circuit = ab763
+preamp_name = fender_deluxe_reverb
+power_tube_type = 6V6
+power_default_drive_db = 4.5
+power_default_level_db = -1.5
+power_default_bias_trim = 0.0

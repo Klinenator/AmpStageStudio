@@ -4,8 +4,11 @@
 section modeling without neural networks.
 
 Current focus:
-- prototype a single tube-style gain stage
+- prototype amp-specific preamp sections
+- experiment with pedal/effect stages before the tube stage
+- add selectable power-tube output stages (`6L6`, `EL34`, `EL84`, `6V6`)
 - audition it offline with generated WAV files
+- run the stage chain live from an audio interface when PortAudio is available
 - build toward modular amp sections like preamp, tone stack, and power amp
 
 ## Current files
@@ -13,8 +16,37 @@ Current focus:
 ```text
 .
 ├── CMakeLists.txt
+├── amp_profile.h
+├── amps/
+│   ├── fender_champ.amp
+│   ├── fender_bassman_5f6a.amp
+│   ├── fender_princeton.amp
+│   ├── fender_deluxe_reverb.amp
+│   ├── fender_twin_reverb_ab763.amp
+│   ├── marshall_jcm800.amp
+│   ├── marshall_jtm45.amp
+│   ├── marshall_plexi_1959.amp
+│   ├── mesa_boogie_mark_iic_plus.amp
+│   └── vox_ac30_top_boost.amp
+├── preamp_profile.h
+├── preamps/
+│   ├── fender_champ.preamp
+│   ├── fender_bassman_5f6a.preamp
+│   ├── fender_princeton.preamp
+│   ├── fender_deluxe_reverb.preamp
+│   ├── fender_twin_reverb_ab763.preamp
+│   ├── marshall_jcm800.preamp
+│   ├── marshall_jtm45.preamp
+│   ├── marshall_plexi_1959.preamp
+│   ├── mesa_boogie_mark_iic_plus.preamp
+│   └── vox_ac30_top_boost.preamp
+├── power_stage.h
+├── effects/
+│   ├── klon_effect.h
+│   └── tubescreamer_effect.h
 ├── tube_stage.h
 └── tools/
+    ├── amp_stage_live.cpp
     └── tube_stage_test.cpp
 ```
 
@@ -32,6 +64,15 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j"$(nproc)"
 ```
 
+If PortAudio is installed, the build will also produce:
+
+- `amp_stage_live`
+
+If `NeuralAmpModelerCore` is checked out next to `AmpStageStudio` and `nlohmann/json`
+is available, the build will also produce:
+
+- `nam_offline_render`
+
 ## Offline audition
 
 Generate a low-E sine test note and process it through the stage:
@@ -39,7 +80,7 @@ Generate a low-E sine test note and process it through the stage:
 ```bash
 ./build/tube_stage_test \
   --output-prefix low_e \
-  --preset marshall \
+  --amp marshall_jtm45 \
   --frequency-hz 82.41 \
   --duration 2.0
 ```
@@ -51,8 +92,182 @@ That writes:
 
 You can A/B them in any audio player or DAW.
 
+You can also process a real guitar recording:
+
+```bash
+./build/tube_stage_test \
+  --input-wav "Dry Guitar.wav" \
+  --output-prefix dry_guitar \
+  --preamp fender_deluxe_reverb \
+  --power-tube 6V6
+```
+
+Add a Klon-inspired front-end effect before the tube stage:
+
+```bash
+./build/tube_stage_test \
+  --input-wav "Dry Guitar.wav" \
+  --output-prefix dry_guitar_klon_marshall \
+  --effect klon \
+  --effect-drive 0.55 \
+  --effect-tone 0.6 \
+  --effect-clean-blend 0.45 \
+  --preamp marshall_jtm45 \
+  --power-tube EL34
+```
+
+Or try a Tube Screamer-inspired front-end:
+
+```bash
+./build/tube_stage_test \
+  --input-wav "Dry Guitar.wav" \
+  --output-prefix dry_guitar_ts_fender \
+  --effect tubescreamer \
+  --effect-drive 0.6 \
+  --effect-tone 0.55 \
+  --effect-level-db -2 \
+  --preamp fender_deluxe_reverb \
+  --power-tube 6V6
+```
+
+You can also load a specific file directly:
+
+```bash
+./build/tube_stage_test \
+  --input-wav "Dry Guitar.wav" \
+  --amp-file amps/marshall_jcm800.amp \
+  --output-prefix dry_guitar_jcm800
+```
+
+Current amp profiles:
+- `fender_champ`
+- `fender_bassman_5f6a`
+- `fender_princeton`
+- `fender_deluxe_reverb`
+- `fender_twin_reverb_ab763`
+- `marshall_jtm45`
+- `marshall_jcm800`
+- `marshall_plexi_1959`
+- `mesa_boogie_mark_iic_plus`
+- `vox_ac30_top_boost`
+
+Current preamp profiles:
+- `fender_champ`
+- `fender_bassman_5f6a`
+- `fender_princeton`
+- `fender_deluxe_reverb`
+- `fender_twin_reverb_ab763`
+- `marshall_jtm45`
+- `marshall_jcm800`
+- `marshall_plexi_1959`
+- `mesa_boogie_mark_iic_plus`
+- `vox_ac30_top_boost`
+
+Power-stage families:
+- `6V6`
+- `6L6`
+- `EL34`
+- `EL84`
+
+If the file is stereo, choose the channel with `--input-channel 0` or `--input-channel 1`.
+
+Currently supported input formats:
+- 16-bit PCM WAV
+- 32-bit float WAV
+
+## NAM reference render
+
+You can render the same dry file through a `.nam` model to create a comparison target:
+
+```bash
+./build/nam_offline_render \
+  --model /path/to/model.nam \
+  --input-wav "Dry Guitar.wav" \
+  --output-wav dry_guitar_nam_output.wav
+```
+
+That gives you a reference file you can compare against `tube_stage_test` output while
+tuning the `amps/*.amp` profile values.
+
+## Live input
+
+If PortAudio is available, you can run the stage chain live from an input device.
+
+On Raspberry Pi with Pisound:
+
+```bash
+./build/amp_stage_live \
+  --alsa-device plughw:2,0 \
+  --effect tubescreamer \
+  --preamp fender_deluxe_reverb \
+  --power-tube 6V6
+```
+
+Use `--list-devices` to print PortAudio devices when not using explicit ALSA.
+
+On macOS or another computer, you can either use one duplex device:
+
+```bash
+./build/amp_stage_live \
+  --device "Scarlett" \
+  --effect klon \
+  --preamp marshall_jtm45 \
+  --power-tube EL34
+```
+
+or split input and output devices:
+
+```bash
+./build/amp_stage_live \
+  --input-device "MacBook Pro Microphone" \
+  --output-device "MacBook Pro Speakers" \
+  --effect none \
+  --preamp fender_princeton \
+  --power-tube 6V6
+```
+
+### Web control
+
+`amp_stage_live` can poll a live control file and update the amp and effect settings
+while audio is running. The included Python server edits that file from a browser UI.
+
+Start the audio engine with a control file:
+
+```bash
+./build/amp_stage_live \
+  --alsa-device plughw:2,0 \
+  --amp fender_deluxe_reverb \
+  --control-file web/live_state.cfg
+```
+
+Then start the UI server in a second terminal:
+
+```bash
+python3 web/server.py --control-file web/live_state.cfg
+```
+
+Open:
+
+```text
+http://localhost:8080
+```
+
+From the browser you can change:
+- amp preset
+- preamp profile
+- power tube
+- effect type
+- preamp drive/level/bright/bias
+- power-stage drive/level/bias
+- effect drive/tone/level/clean blend
+
 ## Notes
 
-- `marshall` and `fender` are currently voicing presets, not exact tube-circuit models.
+- The `amps/` files are convenience presets that combine a named preamp with a default power tube.
+- The `preamps/` files are the current source of truth for stage voicing.
+- `--preamp` plus `--power-tube` is the most direct way to audition custom combinations.
+- `--preset marshall|fender` still works as a fallback when you do not specify a preamp or amp preset.
+- `klon` is currently a Klon-inspired approximation, not an exact op-amp circuit solve.
+- `tubescreamer` is currently a Tube Screamer-inspired approximation, not an exact circuit solve.
 - This project is intentionally separate from `raspi-NAM`, which is focused on running
   NeuralAmpModeler models on Raspberry Pi hardware.

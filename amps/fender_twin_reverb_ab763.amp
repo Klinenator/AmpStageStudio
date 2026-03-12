@@ -1,0 +1,8 @@
+# Fender Twin Reverb-inspired single-stage voicing
+name = fender_twin_reverb_ab763
+circuit = ab763
+preamp_name = fender_twin_reverb_ab763
+power_tube_type = 6L6
+power_default_drive_db = 2.0
+power_default_level_db = -0.5
+power_default_bias_trim = 0.0

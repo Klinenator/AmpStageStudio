@@ -1,0 +1,16 @@
+name = marshall_jtm45
+circuit = jtm45
+input_hpf_hz = 72.0
+bright_hpf_hz = 1850.0
+plate_lpf_hz = 4400.0
+output_hpf_hz = 88.0
+nominal_bias = 0.06
+positive_curve = 1.74
+negative_curve = 1.17
+asymmetry = 0.96
+cathode_memory_amount = 0.14
+default_drive_db = 15.0
+default_level_db = -6.0
+default_bright_db = 2.5
+default_bias_trim = 0.02
+

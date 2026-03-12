@@ -1,0 +1,16 @@
+name = fender_princeton
+circuit = aa1164
+input_hpf_hz = 48.0
+bright_hpf_hz = 2250.0
+plate_lpf_hz = 6100.0
+output_hpf_hz = 58.0
+nominal_bias = 0.04
+positive_curve = 1.46
+negative_curve = 1.00
+asymmetry = 0.90
+cathode_memory_amount = 0.10
+default_drive_db = 11.0
+default_level_db = -4.5
+default_bright_db = 2.0
+default_bias_trim = 0.0
+

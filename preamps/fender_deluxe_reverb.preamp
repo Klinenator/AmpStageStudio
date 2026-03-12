@@ -1,0 +1,16 @@
+name = fender_deluxe_reverb
+circuit = ab763
+input_hpf_hz = 45.0
+bright_hpf_hz = 2200.0
+plate_lpf_hz = 6200.0
+output_hpf_hz = 55.0
+nominal_bias = 0.04
+positive_curve = 1.62
+negative_curve = 1.10
+asymmetry = 0.90
+cathode_memory_amount = 0.12
+default_drive_db = 14.0
+default_level_db = -4.0
+default_bright_db = 2.0
+default_bias_trim = 0.0
+

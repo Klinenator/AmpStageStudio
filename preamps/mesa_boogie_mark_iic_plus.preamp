@@ -1,0 +1,15 @@
+name = mesa_boogie_mark_iic_plus
+circuit = mark_iic_plus
+input_hpf_hz = 92.0
+bright_hpf_hz = 1650.0
+plate_lpf_hz = 3600.0
+output_hpf_hz = 88.0
+nominal_bias = 0.075
+positive_curve = 1.98
+negative_curve = 1.28
+asymmetry = 0.99
+cathode_memory_amount = 0.18
+default_drive_db = 19.0
+default_level_db = -7.5
+default_bright_db = 2.4
+default_bias_trim = 0.03

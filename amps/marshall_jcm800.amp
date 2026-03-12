@@ -1,0 +1,8 @@
+# Marshall JCM800-inspired single-stage voicing
+name = marshall_jcm800
+circuit = 2203
+preamp_name = marshall_jcm800
+power_tube_type = EL34
+power_default_drive_db = 5.0
+power_default_level_db = -1.5
+power_default_bias_trim = 0.0

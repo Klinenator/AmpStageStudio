@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AmpStageStudio Live</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="amp-shell">
+      <section class="amp-header">
+        <div class="badge">AmpStageStudio</div>
+        <h1>Live Control</h1>
+        <p id="status">Connecting…</p>
+      </section>
+
+      <section class="panel">
+        <label>
+          <span>Amp Preset</span>
+          <select id="amp"></select>
+        </label>
+        <label>
+          <span>Preamp</span>
+          <select id="preamp"></select>
+        </label>
+        <label>
+          <span>Power Tube</span>
+          <select id="power_tube_type"></select>
+        </label>
+        <label>
+          <span>Effect</span>
+          <select id="effect">
+            <option value="none">none</option>
+            <option value="klon">klon</option>
+            <option value="tubescreamer">tubescreamer</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <h2>Preamp</h2>
+          <label><span>Drive</span><input id="drive_db" type="range" min="0" max="24" step="0.1"><output id="drive_db_value"></output></label>
+          <label><span>Level</span><input id="level_db" type="range" min="-12" max="6" step="0.1"><output id="level_db_value"></output></label>
+          <label><span>Bright</span><input id="bright_db" type="range" min="0" max="8" step="0.1"><output id="bright_db_value"></output></label>
+          <label><span>Bias</span><input id="bias_trim" type="range" min="-0.2" max="0.2" step="0.005"><output id="bias_trim_value"></output></label>
+        </div>
+
+        <div class="panel">
+          <h2>Power Stage</h2>
+          <label><span>Drive</span><input id="power_drive_db" type="range" min="0" max="12" step="0.1"><output id="power_drive_db_value"></output></label>
+          <label><span>Level</span><input id="power_level_db" type="range" min="-6" max="6" step="0.1"><output id="power_level_db_value"></output></label>
+          <label><span>Bias</span><input id="power_bias_trim" type="range" min="-0.2" max="0.2" step="0.005"><output id="power_bias_trim_value"></output></label>
+        </div>
+
+        <div class="panel">
+          <h2>Effect</h2>
+          <label><span>Drive</span><input id="effect_drive" type="range" min="0" max="1" step="0.01"><output id="effect_drive_value"></output></label>
+          <label><span>Tone</span><input id="effect_tone" type="range" min="0" max="1" step="0.01"><output id="effect_tone_value"></output></label>
+          <label><span>Level</span><input id="effect_level_db" type="range" min="-12" max="12" step="0.1"><output id="effect_level_db_value"></output></label>
+          <label><span>Clean Blend</span><input id="effect_clean_blend" type="range" min="0" max="1" step="0.01"><output id="effect_clean_blend_value"></output></label>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+  </html>

@@ -1,0 +1,16 @@
+name = marshall_plexi_1959
+circuit = 1959_super_lead
+input_hpf_hz = 78.0
+bright_hpf_hz = 1750.0
+plate_lpf_hz = 4100.0
+output_hpf_hz = 92.0
+nominal_bias = 0.065
+positive_curve = 1.82
+negative_curve = 1.20
+asymmetry = 0.97
+cathode_memory_amount = 0.15
+default_drive_db = 17.0
+default_level_db = -6.5
+default_bright_db = 3.2
+default_bias_trim = 0.025
+

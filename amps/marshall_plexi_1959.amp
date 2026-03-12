@@ -1,0 +1,8 @@
+# Marshall Plexi-inspired single-stage voicing
+name = marshall_plexi_1959
+circuit = 1959_super_lead
+preamp_name = marshall_plexi_1959
+power_tube_type = EL34
+power_default_drive_db = 4.5
+power_default_level_db = -1.5
+power_default_bias_trim = 0.0

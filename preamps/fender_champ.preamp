@@ -1,0 +1,16 @@
+name = fender_champ
+circuit = 5f1
+input_hpf_hz = 55.0
+bright_hpf_hz = 2400.0
+plate_lpf_hz = 5800.0
+output_hpf_hz = 70.0
+nominal_bias = 0.05
+positive_curve = 1.52
+negative_curve = 1.02
+asymmetry = 0.91
+cathode_memory_amount = 0.11
+default_drive_db = 12.0
+default_level_db = -5.0
+default_bright_db = 1.5
+default_bias_trim = 0.0
+

@@ -1,0 +1,8 @@
+# Marshall JTM45-inspired single-stage voicing
+name = marshall_jtm45
+circuit = jtm45
+preamp_name = marshall_jtm45
+power_tube_type = 6L6
+power_default_drive_db = 4.0
+power_default_level_db = -1.5
+power_default_bias_trim = 0.0

@@ -3,5 +3,8 @@
 __pycache__/
 *.pyc
 build/
+*.wav
 *_input.wav
 *_output.wav
+Dry Guitar*.wav
+1966 Fender Deluxe Reverb/
