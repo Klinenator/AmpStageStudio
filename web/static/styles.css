@@ -302,10 +302,12 @@ h1, h2, p { margin: 0 0 10px; }
   transition: background .16s ease, box-shadow .16s ease;
 }
 
-.pedal-footswitch {
+.effect-pedal .pedal-footswitch {
   display: flex;
   align-items: center;
   justify-content: center;
+  grid-template-columns: none;
+  gap: 0;
   width: 26px;
   height: 26px;
   margin: 0 auto;
