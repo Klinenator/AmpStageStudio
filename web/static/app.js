@@ -1,6 +1,8 @@
 const stateKeys = [
   "amp",
   "preamp",
+  "input_device",
+  "output_device",
   "power_tube_type",
   "effect",
   "drive_db",
@@ -77,16 +79,26 @@ function scheduleSave() {
 
 async function init() {
   try {
-    const [ampsData, preampsData, powerTubesData, stateData] = await Promise.all([
+    const [ampsData, preampsData, powerTubesData, audioDevicesData, stateData] = await Promise.all([
       fetchJson("/api/amps"),
       fetchJson("/api/preamps"),
       fetchJson("/api/power-tubes"),
+      fetchJson("/api/audio-devices"),
       fetchJson("/api/state"),
     ]);
 
     $("amp").replaceChildren();
     $("preamp").replaceChildren();
     $("power_tube_type").replaceChildren();
+    $("input_device").replaceChildren();
+    $("output_device").replaceChildren();
+
+    for (const id of ["input_device", "output_device"]) {
+      const option = document.createElement("option");
+      option.value = "";
+      option.textContent = "(use current CLI/default)";
+      $(id).appendChild(option);
+    }
 
     for (const amp of ampsData.amps) {
       const option = document.createElement("option");
@@ -107,6 +119,20 @@ async function init() {
       option.value = tube;
       option.textContent = tube;
       $("power_tube_type").appendChild(option);
+    }
+
+    for (const name of audioDevicesData.input_devices || []) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      $("input_device").appendChild(option);
+    }
+
+    for (const name of audioDevicesData.output_devices || []) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      $("output_device").appendChild(option);
     }
 
     applyState(stateData);

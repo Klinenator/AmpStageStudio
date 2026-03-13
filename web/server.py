@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
+import subprocess
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -16,6 +18,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_CONTROL_FILE = ROOT / "web" / "live_state.cfg"
 AMPS_DIR = ROOT / "amps"
 PREAMPS_DIR = ROOT / "preamps"
+AMP_STAGE_LIVE_BIN = ROOT / "build" / "amp_stage_live"
 
 
 def parse_cfg(path: Path) -> dict[str, str]:
@@ -49,6 +52,41 @@ def list_preamps() -> list[str]:
 
 def list_power_tubes() -> list[str]:
     return ["6V6", "6L6", "EL34", "EL84"]
+
+
+def list_audio_devices() -> dict[str, list[str]]:
+    if not AMP_STAGE_LIVE_BIN.exists():
+        return {"input_devices": [], "output_devices": []}
+
+    try:
+        result = subprocess.run(
+            [str(AMP_STAGE_LIVE_BIN), "--list-devices"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return {"input_devices": [], "output_devices": []}
+
+    input_devices: list[str] = []
+    output_devices: list[str] = []
+    pattern = re.compile(r"^\[(\d+)\]\s+(.*?)\s+in=(\d+)\s+out=(\d+)$")
+    for line in result.stdout.splitlines() + result.stderr.splitlines():
+        match = pattern.match(line.strip())
+        if not match:
+            continue
+        name = match.group(2)
+        input_channels = int(match.group(3))
+        output_channels = int(match.group(4))
+        if input_channels >= 2:
+            input_devices.append(name)
+        if output_channels >= 2:
+            output_devices.append(name)
+
+    return {
+        "input_devices": input_devices,
+        "output_devices": output_devices,
+    }
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -93,6 +131,9 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/power-tubes":
             self._send_json({"power_tubes": list_power_tubes()})
+            return
+        if parsed.path == "/api/audio-devices":
+            self._send_json(list_audio_devices())
             return
         if parsed.path == "/api/health":
             self._send_json({"ok": True})

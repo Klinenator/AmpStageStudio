@@ -587,6 +587,20 @@ int main(int argc, char** argv) {
     std::string error;
     if (LoadLiveControlState(config.control_file, loaded_state, &error)) {
       live_state = loaded_state;
+      if (config.input_device_name.empty() && loaded_state.input_device_name) {
+        config.input_device_name = *loaded_state.input_device_name;
+      }
+      if (config.output_device_name.empty() && loaded_state.output_device_name) {
+        config.output_device_name = *loaded_state.output_device_name;
+      }
+      if (config.device_name == "default" &&
+          config.input_device_name.empty() &&
+          config.output_device_name.empty() &&
+          loaded_state.input_device_name &&
+          loaded_state.output_device_name &&
+          *loaded_state.input_device_name == *loaded_state.output_device_name) {
+        config.device_name = *loaded_state.input_device_name;
+      }
     } else {
       std::cerr << error << "\n";
     }
