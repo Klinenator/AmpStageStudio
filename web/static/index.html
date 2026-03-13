@@ -75,51 +75,67 @@
             <p>Preamp-side effects feed the amp input. Chorus and plate sit after the amp for a cleaner tail.</p>
           </div>
         </div>
-        <div class="effect-grid">
-          <section class="effect-block" id="effect_compression_block">
-            <label class="effect-toggle"><span>Compression</span><input id="effect_compression_enabled" type="checkbox"></label>
+        <div class="lane-stack">
+          <section class="effect-lane-panel">
+            <div class="lane-header">
+              <h3>Pre</h3>
+              <p>Drag to reorder what hits the amp input.</p>
+            </div>
+            <div class="effect-lane" id="pre_effect_lane">
+          <section class="effect-block" id="effect_compression_block" data-effect="compression">
+            <label class="effect-toggle"><span>Compression</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_compression_enabled" type="checkbox"></label>
             <label><span>Sustain</span><input id="compressor_sustain" type="range" min="0" max="1" step="0.01"><output id="compressor_sustain_value"></output></label>
             <label><span>Attack</span><input id="compressor_attack" type="range" min="0" max="1" step="0.01"><output id="compressor_attack_value"></output></label>
             <label><span>Level</span><input id="compressor_level_db" type="range" min="-12" max="12" step="0.1"><output id="compressor_level_db_value"></output></label>
             <label><span>Blend</span><input id="compressor_blend" type="range" min="0" max="1" step="0.01"><output id="compressor_blend_value"></output></label>
           </section>
 
-          <section class="effect-block" id="effect_klon_block">
-            <label class="effect-toggle"><span>Klon</span><input id="effect_klon_enabled" type="checkbox"></label>
+          <section class="effect-block" id="effect_klon_block" data-effect="klon">
+            <label class="effect-toggle"><span>Klon</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_klon_enabled" type="checkbox"></label>
             <label><span>Drive</span><input id="klon_drive" type="range" min="0" max="1" step="0.01"><output id="klon_drive_value"></output></label>
             <label><span>Tone</span><input id="klon_tone" type="range" min="0" max="1" step="0.01"><output id="klon_tone_value"></output></label>
             <label><span>Level</span><input id="klon_level_db" type="range" min="-12" max="12" step="0.1"><output id="klon_level_db_value"></output></label>
             <label><span>Clean</span><input id="klon_clean_blend" type="range" min="0" max="1" step="0.01"><output id="klon_clean_blend_value"></output></label>
           </section>
 
-          <section class="effect-block" id="effect_tubescreamer_block">
-            <label class="effect-toggle"><span>Tube Screamer</span><input id="effect_tubescreamer_enabled" type="checkbox"></label>
+          <section class="effect-block" id="effect_tubescreamer_block" data-effect="tubescreamer">
+            <label class="effect-toggle"><span>Tube Screamer</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_tubescreamer_enabled" type="checkbox"></label>
             <label><span>Drive</span><input id="tubescreamer_drive" type="range" min="0" max="1" step="0.01"><output id="tubescreamer_drive_value"></output></label>
             <label><span>Tone</span><input id="tubescreamer_tone" type="range" min="0" max="1" step="0.01"><output id="tubescreamer_tone_value"></output></label>
             <label><span>Level</span><input id="tubescreamer_level_db" type="range" min="-12" max="12" step="0.1"><output id="tubescreamer_level_db_value"></output></label>
           </section>
 
-          <section class="effect-block" id="effect_rat_block">
-            <label class="effect-toggle"><span>RAT</span><input id="effect_rat_enabled" type="checkbox"></label>
+          <section class="effect-block" id="effect_rat_block" data-effect="rat">
+            <label class="effect-toggle"><span>RAT</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_rat_enabled" type="checkbox"></label>
             <label><span>Distortion</span><input id="rat_distortion" type="range" min="0" max="1" step="0.01"><output id="rat_distortion_value"></output></label>
             <label><span>Filter</span><input id="rat_filter" type="range" min="0" max="1" step="0.01"><output id="rat_filter_value"></output></label>
             <label><span>Volume</span><input id="rat_level_db" type="range" min="-12" max="12" step="0.1"><output id="rat_level_db_value"></output></label>
           </section>
+            </div>
+          </section>
 
-          <section class="effect-block" id="effect_chorus_block">
-            <label class="effect-toggle"><span>Chorus</span><input id="effect_chorus_enabled" type="checkbox"></label>
+          <section class="effect-lane-panel">
+            <div class="lane-header">
+              <h3>Post</h3>
+              <p>Drag ambience and modulation after the amp.</p>
+            </div>
+            <div class="effect-lane" id="post_effect_lane">
+          <section class="effect-block" id="effect_chorus_block" data-effect="chorus">
+            <label class="effect-toggle"><span>Chorus</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_chorus_enabled" type="checkbox"></label>
             <label><span>Depth</span><input id="chorus_depth" type="range" min="0" max="1" step="0.01"><output id="chorus_depth_value"></output></label>
             <label><span>Tone</span><input id="chorus_tone" type="range" min="0" max="1" step="0.01"><output id="chorus_tone_value"></output></label>
             <label><span>Level</span><input id="chorus_level_db" type="range" min="-12" max="12" step="0.1"><output id="chorus_level_db_value"></output></label>
             <label><span>Mix</span><input id="chorus_mix" type="range" min="0" max="1" step="0.01"><output id="chorus_mix_value"></output></label>
           </section>
 
-          <section class="effect-block" id="effect_plate_block">
-            <label class="effect-toggle"><span>Plate</span><input id="effect_plate_enabled" type="checkbox"></label>
+          <section class="effect-block" id="effect_plate_block" data-effect="plate">
+            <label class="effect-toggle"><span>Plate</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_plate_enabled" type="checkbox"></label>
             <label><span>Mix</span><input id="plate_mix" type="range" min="0" max="1" step="0.01"><output id="plate_mix_value"></output></label>
             <label><span>Bright</span><input id="plate_brightness" type="range" min="0" max="1" step="0.01"><output id="plate_brightness_value"></output></label>
             <label><span>Level</span><input id="plate_level_db" type="range" min="-12" max="12" step="0.1"><output id="plate_level_db_value"></output></label>
             <label><span>Decay</span><input id="plate_decay" type="range" min="0" max="1" step="0.01"><output id="plate_decay_value"></output></label>
+          </section>
+            </div>
           </section>
         </div>
       </section>

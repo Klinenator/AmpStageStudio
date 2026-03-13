@@ -69,6 +69,8 @@ struct LiveControlState {
   std::optional<std::string> alsa_output;
   std::optional<std::string> input_device_name;
   std::optional<std::string> output_device_name;
+  std::optional<std::string> effect_pre_chain;
+  std::optional<std::string> effect_post_chain;
   std::optional<PowerTubeType> power_tube_type;
   std::optional<EffectType> effect;
   std::optional<bool> effect_compression_enabled;
@@ -206,6 +208,14 @@ inline bool LoadLiveControlState(const std::string& path,
     }
     if (key == "output_device") {
       parsed.output_device_name = value;
+      continue;
+    }
+    if (key == "effect_pre_chain") {
+      parsed.effect_pre_chain = value;
+      continue;
+    }
+    if (key == "effect_post_chain") {
+      parsed.effect_post_chain = value;
       continue;
     }
     if (key == "power_tube_type") {
@@ -401,6 +411,12 @@ inline bool SaveLiveControlState(const std::string& path,
   }
   if (state.output_device_name) {
     out << "output_device = " << *state.output_device_name << "\n";
+  }
+  if (state.effect_pre_chain) {
+    out << "effect_pre_chain = " << *state.effect_pre_chain << "\n";
+  }
+  if (state.effect_post_chain) {
+    out << "effect_post_chain = " << *state.effect_post_chain << "\n";
   }
   if (state.power_tube_type) {
     out << "power_tube_type = " << PowerTubeTypeName(*state.power_tube_type) << "\n";

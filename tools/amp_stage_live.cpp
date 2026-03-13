@@ -106,6 +106,8 @@ struct RuntimeSettings {
   bool rat_enabled = false;
   bool chorus_enabled = false;
   bool plate_enabled = false;
+  std::vector<std::string> pre_chain;
+  std::vector<std::string> post_chain;
   KlonControls klon_controls;
   TubeScreamerControls tubescreamer_controls;
   RatControls rat_controls;
@@ -1206,7 +1208,9 @@ void EnableEffectName(RuntimeSettings& settings, const std::string& effect_name)
 }
 
 bool HasExplicitEffectChain(const LiveControlState& state) {
-  return state.effect_compression_enabled.has_value() ||
+  return state.effect_pre_chain.has_value() ||
+         state.effect_post_chain.has_value() ||
+         state.effect_compression_enabled.has_value() ||
          state.effect_klon_enabled.has_value() ||
          state.effect_tubescreamer_enabled.has_value() ||
          state.effect_rat_enabled.has_value() ||
@@ -1214,14 +1218,79 @@ bool HasExplicitEffectChain(const LiveControlState& state) {
          state.effect_plate_enabled.has_value();
 }
 
+bool IsPreChainEffect(const std::string& effect_name) {
+  return effect_name == "compression" ||
+         effect_name == "klon" ||
+         effect_name == "tubescreamer" ||
+         effect_name == "rat";
+}
+
+bool IsPostChainEffect(const std::string& effect_name) {
+  return effect_name == "chorus" || effect_name == "plate";
+}
+
+bool IsEffectActive(const RuntimeSettings& settings, const std::string& effect_name) {
+  if (effect_name == "compression") return settings.compression_enabled;
+  if (effect_name == "klon") return settings.klon_enabled;
+  if (effect_name == "tubescreamer") return settings.tubescreamer_enabled;
+  if (effect_name == "rat") return settings.rat_enabled;
+  if (effect_name == "chorus") return settings.chorus_enabled;
+  if (effect_name == "plate") return settings.plate_enabled;
+  return false;
+}
+
+std::vector<std::string> DefaultPreChain() {
+  return {"compression", "klon", "tubescreamer", "rat"};
+}
+
+std::vector<std::string> DefaultPostChain() {
+  return {"chorus", "plate"};
+}
+
+std::vector<std::string> NormalizeChainOrder(
+    const std::vector<std::string>& requested,
+    const std::vector<std::string>& defaults,
+    bool (*is_allowed)(const std::string&)) {
+  std::vector<std::string> normalized;
+  for (const std::string& effect_name : requested) {
+    if (!is_allowed(effect_name)) {
+      continue;
+    }
+    if (std::find(normalized.begin(), normalized.end(), effect_name) == normalized.end()) {
+      normalized.push_back(effect_name);
+    }
+  }
+  for (const std::string& effect_name : defaults) {
+    if (std::find(normalized.begin(), normalized.end(), effect_name) == normalized.end()) {
+      normalized.push_back(effect_name);
+    }
+  }
+  return normalized;
+}
+
+std::string JoinChain(const std::vector<std::string>& chain) {
+  std::string text;
+  for (std::size_t i = 0; i < chain.size(); ++i) {
+    if (i > 0) {
+      text += ",";
+    }
+    text += chain[i];
+  }
+  return text;
+}
+
 std::string EffectChainSummary(const RuntimeSettings& settings) {
   std::vector<std::string> enabled;
-  if (settings.compression_enabled) enabled.push_back("compression");
-  if (settings.klon_enabled) enabled.push_back("klon");
-  if (settings.tubescreamer_enabled) enabled.push_back("tubescreamer");
-  if (settings.rat_enabled) enabled.push_back("rat");
-  if (settings.chorus_enabled) enabled.push_back("chorus");
-  if (settings.plate_enabled) enabled.push_back("plate");
+  for (const std::string& effect_name : settings.pre_chain) {
+    if (IsEffectActive(settings, effect_name)) {
+      enabled.push_back(effect_name);
+    }
+  }
+  for (const std::string& effect_name : settings.post_chain) {
+    if (IsEffectActive(settings, effect_name)) {
+      enabled.push_back(effect_name);
+    }
+  }
   if (enabled.empty()) {
     return "none";
   }
@@ -1354,8 +1423,17 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
   if (config.effect != "none" && IsEffectEnabled(config.effect)) {
     EnableEffectName(*settings, config.effect);
   }
-  for (const std::string& effect_name : SplitCommaList(config.effects)) {
+  const std::vector<std::string> requested_cli_chain = SplitCommaList(config.effects);
+  for (const std::string& effect_name : requested_cli_chain) {
     EnableEffectName(*settings, effect_name);
+  }
+  settings->pre_chain = DefaultPreChain();
+  settings->post_chain = DefaultPostChain();
+  if (!requested_cli_chain.empty()) {
+    settings->pre_chain =
+        NormalizeChainOrder(requested_cli_chain, DefaultPreChain(), IsPreChainEffect);
+    settings->post_chain =
+        NormalizeChainOrder(requested_cli_chain, DefaultPostChain(), IsPostChainEffect);
   }
 
   auto apply_legacy_shared_controls = [&](const std::string& effect_name) {
@@ -1416,6 +1494,16 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
     }
     if (live_state->effect_plate_enabled) {
       settings->plate_enabled = *live_state->effect_plate_enabled;
+    }
+    if (live_state->effect_pre_chain) {
+      settings->pre_chain = NormalizeChainOrder(
+          SplitCommaList(*live_state->effect_pre_chain),
+          DefaultPreChain(), IsPreChainEffect);
+    }
+    if (live_state->effect_post_chain) {
+      settings->post_chain = NormalizeChainOrder(
+          SplitCommaList(*live_state->effect_post_chain),
+          DefaultPostChain(), IsPostChainEffect);
     }
     if (live_state->power_tube_type) {
       settings->has_power_stage = true;
@@ -1549,6 +1637,8 @@ LiveControlState BuildLiveControlState(const RuntimeSettings& settings) {
   state.effect_rat_enabled = settings.rat_enabled;
   state.effect_chorus_enabled = settings.chorus_enabled;
   state.effect_plate_enabled = settings.plate_enabled;
+  state.effect_pre_chain = JoinChain(settings.pre_chain);
+  state.effect_post_chain = JoinChain(settings.post_chain);
   state.drive_db = settings.stage_controls.drive_db;
   state.level_db = settings.stage_controls.level_db;
   state.bright_db = settings.stage_controls.bright_db;
@@ -1680,28 +1770,38 @@ int AudioCallback(const void* input_buffer,
       s = static_cast<float>(in[i * kInputChannels] / 32768.0f);
     }
 
-    if (settings && settings->compression_enabled) {
-      s = state->compressor.Process(s);
-    }
-    if (settings && settings->klon_enabled) {
-      s = state->effect.Process(s);
-    }
-    if (settings && settings->tubescreamer_enabled) {
-      s = state->tubescreamer.Process(s);
-    }
-    if (settings && settings->rat_enabled) {
-      s = state->rat.Process(s);
+    if (settings) {
+      for (const std::string& effect_name : settings->pre_chain) {
+        if (!IsEffectActive(*settings, effect_name)) {
+          continue;
+        }
+        if (effect_name == "compression") {
+          s = state->compressor.Process(s);
+        } else if (effect_name == "klon") {
+          s = state->effect.Process(s);
+        } else if (effect_name == "tubescreamer") {
+          s = state->tubescreamer.Process(s);
+        } else if (effect_name == "rat") {
+          s = state->rat.Process(s);
+        }
+      }
     }
 
     s = state->preamp.Process(s);
     if (settings && settings->has_power_stage) {
       s = state->power_stage.Process(s);
     }
-    if (settings && settings->chorus_enabled) {
-      s = state->chorus.Process(s);
-    }
-    if (settings && settings->plate_enabled) {
-      s = state->plate.Process(s);
+    if (settings) {
+      for (const std::string& effect_name : settings->post_chain) {
+        if (!IsEffectActive(*settings, effect_name)) {
+          continue;
+        }
+        if (effect_name == "chorus") {
+          s = state->chorus.Process(s);
+        } else if (effect_name == "plate") {
+          s = state->plate.Process(s);
+        }
+      }
     }
 
     const float clamped = std::clamp(s, -1.0f, 1.0f);

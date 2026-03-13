@@ -465,6 +465,46 @@ std::vector<std::string> SplitCommaList(const std::string& value) {
   }
   return items;
 }
+
+bool IsPreChainEffect(const std::string& effect_name) {
+  return effect_name == "compression" ||
+         effect_name == "klon" ||
+         effect_name == "tubescreamer" ||
+         effect_name == "rat";
+}
+
+bool IsPostChainEffect(const std::string& effect_name) {
+  return effect_name == "chorus" || effect_name == "plate";
+}
+
+std::vector<std::string> DefaultPreChain() {
+  return {"compression", "klon", "tubescreamer", "rat"};
+}
+
+std::vector<std::string> DefaultPostChain() {
+  return {"chorus", "plate"};
+}
+
+std::vector<std::string> NormalizeChainOrder(
+    const std::vector<std::string>& requested,
+    const std::vector<std::string>& defaults,
+    bool (*is_allowed)(const std::string&)) {
+  std::vector<std::string> normalized;
+  for (const std::string& effect_name : requested) {
+    if (!is_allowed(effect_name)) {
+      continue;
+    }
+    if (std::find(normalized.begin(), normalized.end(), effect_name) == normalized.end()) {
+      normalized.push_back(effect_name);
+    }
+  }
+  for (const std::string& effect_name : defaults) {
+    if (std::find(normalized.begin(), normalized.end(), effect_name) == normalized.end()) {
+      normalized.push_back(effect_name);
+    }
+  }
+  return normalized;
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -578,8 +618,15 @@ int main(int argc, char** argv) {
   if (config.effect != "none") {
     enable_effect(config.effect);
   }
-  for (const std::string& effect_name : SplitCommaList(config.effects)) {
+  const std::vector<std::string> requested_chain = SplitCommaList(config.effects);
+  for (const std::string& effect_name : requested_chain) {
     enable_effect(effect_name);
+  }
+  std::vector<std::string> pre_chain = DefaultPreChain();
+  std::vector<std::string> post_chain = DefaultPostChain();
+  if (!requested_chain.empty()) {
+    pre_chain = NormalizeChainOrder(requested_chain, DefaultPreChain(), IsPreChainEffect);
+    post_chain = NormalizeChainOrder(requested_chain, DefaultPostChain(), IsPostChainEffect);
   }
 
   ChorusEffect chorus;
@@ -707,27 +754,27 @@ int main(int argc, char** argv) {
 
   for (std::size_t i = 0; i < output_samples.size(); ++i) {
     float s = output_samples[i];
-    if (compression_enabled) {
-      s = compressor.Process(s);
-    }
-    if (klon_enabled) {
-      s = effect.Process(s);
-    }
-    if (tubescreamer_enabled) {
-      s = tubescreamer.Process(s);
-    }
-    if (rat_enabled) {
-      s = rat.Process(s);
+    for (const std::string& effect_name : pre_chain) {
+      if (effect_name == "compression" && compression_enabled) {
+        s = compressor.Process(s);
+      } else if (effect_name == "klon" && klon_enabled) {
+        s = effect.Process(s);
+      } else if (effect_name == "tubescreamer" && tubescreamer_enabled) {
+        s = tubescreamer.Process(s);
+      } else if (effect_name == "rat" && rat_enabled) {
+        s = rat.Process(s);
+      }
     }
     s = preamp.Process(s);
     if (has_power_stage) {
       s = power_stage.Process(s);
     }
-    if (chorus_enabled) {
-      s = chorus.Process(s);
-    }
-    if (plate_enabled) {
-      s = plate.Process(s);
+    for (const std::string& effect_name : post_chain) {
+      if (effect_name == "chorus" && chorus_enabled) {
+        s = chorus.Process(s);
+      } else if (effect_name == "plate" && plate_enabled) {
+        s = plate.Process(s);
+      }
     }
     output_samples[i] = s;
   }
@@ -760,6 +807,21 @@ int main(int argc, char** argv) {
   if (enabled_effects.empty()) {
     std::cout << "none";
   } else {
+    enabled_effects.clear();
+    for (const std::string& effect_name : pre_chain) {
+      if ((effect_name == "compression" && compression_enabled) ||
+          (effect_name == "klon" && klon_enabled) ||
+          (effect_name == "tubescreamer" && tubescreamer_enabled) ||
+          (effect_name == "rat" && rat_enabled)) {
+        enabled_effects.push_back(effect_name);
+      }
+    }
+    for (const std::string& effect_name : post_chain) {
+      if ((effect_name == "chorus" && chorus_enabled) ||
+          (effect_name == "plate" && plate_enabled)) {
+        enabled_effects.push_back(effect_name);
+      }
+    }
     for (std::size_t i = 0; i < enabled_effects.size(); ++i) {
       if (i > 0) {
         std::cout << " -> ";

@@ -57,8 +57,16 @@ const effectBlockIds = {
   effect_plate_enabled: "effect_plate_block",
 };
 
+const defaultPreChain = ["compression", "klon", "tubescreamer", "rat"];
+const defaultPostChain = ["chorus", "plate"];
+const laneDefaults = {
+  pre_effect_lane: defaultPreChain,
+  post_effect_lane: defaultPostChain,
+};
+
 let saveTimer = null;
 let audioBackend = "portaudio";
+let draggingBlock = null;
 let currentControlSchema = {
   input_hpf_hz: 60.0,
 };
@@ -839,7 +847,125 @@ function hydrateLegacyEffectState(data) {
     if (legacyEffect === "chorus") hydrated.chorus_mix = hydrated.effect_clean_blend;
     if (legacyEffect === "plate") hydrated.plate_decay = hydrated.effect_clean_blend;
   }
+  if (hydrated.effect_pre_chain === undefined) {
+    hydrated.effect_pre_chain = defaultPreChain.join(",");
+  }
+  if (hydrated.effect_post_chain === undefined) {
+    hydrated.effect_post_chain = defaultPostChain.join(",");
+  }
   return hydrated;
+}
+
+function parseChainValue(value) {
+  return String(value || "")
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
+function normalizeLaneOrder(requested, defaults) {
+  const ordered = [];
+  for (const effect of requested) {
+    if (defaults.includes(effect) && !ordered.includes(effect)) {
+      ordered.push(effect);
+    }
+  }
+  for (const effect of defaults) {
+    if (!ordered.includes(effect)) {
+      ordered.push(effect);
+    }
+  }
+  return ordered;
+}
+
+function laneOrder(laneId) {
+  return Array.from($(laneId)?.querySelectorAll(".effect-block") || [])
+    .map((block) => block.dataset.effect)
+    .filter(Boolean);
+}
+
+function applyLaneOrder(chain, laneId, defaults) {
+  const lane = $(laneId);
+  if (!lane) return;
+  const order = normalizeLaneOrder(parseChainValue(chain), defaults);
+  for (const effect of order) {
+    const block = lane.querySelector(`[data-effect="${effect}"]`) || $( `effect_${effect}_block`);
+    if (block) {
+      lane.appendChild(block);
+    }
+  }
+}
+
+function effectChainPayload() {
+  return {
+    effect_pre_chain: laneOrder("pre_effect_lane").join(","),
+    effect_post_chain: laneOrder("post_effect_lane").join(","),
+  };
+}
+
+function findDropTarget(lane, clientX) {
+  const blocks = Array.from(
+    lane.querySelectorAll(".effect-block:not(.effect-block-dragging)"),
+  );
+  let best = null;
+  let bestOffset = Number.NEGATIVE_INFINITY;
+  for (const block of blocks) {
+    const rect = block.getBoundingClientRect();
+    const offset = clientX - (rect.left + rect.width / 2);
+    if (offset < 0 && offset > bestOffset) {
+      bestOffset = offset;
+      best = block;
+    }
+  }
+  return best;
+}
+
+function refreshEffectBoardOrder() {
+  for (const laneId of ["pre_effect_lane", "post_effect_lane"]) {
+    const lane = $(laneId);
+    if (!lane) continue;
+    lane.dataset.chain = laneOrder(laneId).join(" -> ");
+  }
+}
+
+function setupEffectDragAndDrop() {
+  for (const handle of document.querySelectorAll(".drag-handle")) {
+    handle.addEventListener("dragstart", (event) => {
+      draggingBlock = handle.closest(".effect-block");
+      if (!draggingBlock) return;
+      draggingBlock.classList.add("effect-block-dragging");
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", draggingBlock.dataset.effect || "");
+      }
+    });
+    handle.addEventListener("dragend", () => {
+      if (!draggingBlock) return;
+      draggingBlock.classList.remove("effect-block-dragging");
+      draggingBlock = null;
+      refreshEffectBoardOrder();
+      scheduleSave();
+    });
+  }
+
+  for (const laneId of ["pre_effect_lane", "post_effect_lane"]) {
+    const lane = $(laneId);
+    if (!lane) continue;
+    lane.addEventListener("dragover", (event) => {
+      if (!draggingBlock) return;
+      const effect = draggingBlock.dataset.effect || "";
+      if (!(laneDefaults[laneId] || []).includes(effect)) {
+        return;
+      }
+      event.preventDefault();
+      const target = findDropTarget(lane, event.clientX);
+      if (!target) {
+        lane.appendChild(draggingBlock);
+      } else if (target !== draggingBlock) {
+        lane.insertBefore(draggingBlock, target);
+      }
+    });
+  }
 }
 
 function refreshEffectBlocks() {
@@ -915,6 +1041,7 @@ function readStateFromInputs() {
     if (!el) continue;
     payload[key] = el.checked ? "1" : "0";
   }
+  Object.assign(payload, effectChainPayload());
   const inputSelect = $("input_device_select");
   const outputSelect = $("output_device_select");
   if (audioBackend === "alsa") {
@@ -933,6 +1060,8 @@ function readStateFromInputs() {
 
 function applyState(data) {
   const hydrated = hydrateLegacyEffectState(data);
+  applyLaneOrder(hydrated.effect_pre_chain, "pre_effect_lane", defaultPreChain);
+  applyLaneOrder(hydrated.effect_post_chain, "post_effect_lane", defaultPostChain);
   for (const key of valueKeys) {
     const el = $(key);
     if (!el || hydrated[key] === undefined) continue;
@@ -954,6 +1083,7 @@ function applyState(data) {
     if (outputSelect && hydrated.output_device !== undefined) outputSelect.value = hydrated.output_device;
   }
   refreshEffectBlocks();
+  refreshEffectBoardOrder();
   drawTonePlot();
   $("status").textContent = `Connected to ${hydrated._control_file || "control file"}`;
 }
@@ -1046,6 +1176,7 @@ async function init() {
     applyState(stateData);
     await refreshControlSchema();
     refreshEffectBlocks();
+    refreshEffectBoardOrder();
     drawTonePlot();
     for (const key of stateKeys) {
       const el = $(key);
@@ -1074,6 +1205,7 @@ async function init() {
     }
     $("input_device_select").addEventListener("change", scheduleSave);
     $("output_device_select").addEventListener("change", scheduleSave);
+    setupEffectDragAndDrop();
   } catch (error) {
     $("status").textContent = `Failed to load UI: ${error.message}`;
   }
