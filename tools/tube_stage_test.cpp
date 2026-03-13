@@ -9,8 +9,11 @@
 #include <vector>
 
 #include "../amp_profile.h"
+#include "../effects/chorus_effect.h"
+#include "../effects/compressor_effect.h"
 #include "../effects/klon_effect.h"
 #include "../effects/plate_reverb_effect.h"
+#include "../effects/rat_effect.h"
 #include "../effects/tubescreamer_effect.h"
 #include "../power_stage.h"
 #include "../preamp.h"
@@ -62,7 +65,7 @@ void PrintUsage(const char* program_name) {
       << "  --preamp-file PATH     Explicit preamp profile file path\n"
       << "  --power-tube NAME      6V6, 6L6, EL34, or EL84\n"
       << "  --preset NAME          marshall or fender\n"
-      << "  --effect NAME          none, klon, tubescreamer, or plate, default none\n"
+      << "  --effect NAME          none, klon, tubescreamer, rat, chorus, compression, or plate, default none\n"
       << "  --input-wav PATH       Use a WAV file instead of generating a sine\n"
       << "  --input-channel N      Channel to read from WAV input, default 0\n"
       << "  --frequency-hz VALUE   Input sine frequency, default 82.41\n"
@@ -80,10 +83,10 @@ void PrintUsage(const char* program_name) {
       << "  --power-drive-db VAL   Master / phase inverter drive, amp default\n"
       << "  --power-level-db VAL   Final power-stage output trim, amp default\n"
       << "  --power-bias-trim VAL  Power-stage bias trim, amp default\n"
-      << "  --effect-drive VALUE   Pedal drive, or plate mix 0..1, default 0.5\n"
-      << "  --effect-tone VALUE    Pedal tone, or plate brightness 0..1, default 0.5\n"
+      << "  --effect-drive VALUE   Shared effect control 1, default 0.5\n"
+      << "  --effect-tone VALUE    Shared effect control 2, default 0.5\n"
       << "  --effect-level-db VAL  Output trim for effect, default 0\n"
-      << "  --effect-clean-blend V Klon clean blend, or plate decay 0..1, default 0.45\n";
+      << "  --effect-clean-blend V Shared effect control 4, default 0.45\n";
 }
 
 std::optional<PreampProfile> ResolvePreampProfile(const Config& config) {
@@ -425,6 +428,9 @@ bool ReadInputWav(const std::string& path,
 bool IsEffectEnabled(const std::string& effect_name) {
   return effect_name == "klon" ||
          effect_name == "tubescreamer" ||
+         effect_name == "rat" ||
+         effect_name == "chorus" ||
+         effect_name == "compression" ||
          effect_name == "plate";
 }
 }  // namespace
@@ -509,8 +515,11 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  ChorusEffect chorus;
+  CompressorEffect compressor;
   KlonEffect effect;
   TubeScreamerEffect tubescreamer;
+  RatEffect rat;
   PlateReverbEffect plate;
   if (IsEffectEnabled(config.effect)) {
     if (config.effect == "klon") {
@@ -528,6 +537,29 @@ int main(int argc, char** argv) {
       controls.tone = config.effect_tone;
       controls.level_db = config.effect_level_db;
       tubescreamer.SetControls(controls);
+    } else if (config.effect == "rat") {
+      rat.SetSampleRate(config.sample_rate_hz);
+      RatControls controls;
+      controls.distortion = config.effect_drive;
+      controls.filter = config.effect_tone;
+      controls.level_db = config.effect_level_db;
+      rat.SetControls(controls);
+    } else if (config.effect == "chorus") {
+      chorus.SetSampleRate(config.sample_rate_hz);
+      ChorusControls controls;
+      controls.depth = config.effect_drive;
+      controls.tone = config.effect_tone;
+      controls.mix = config.effect_clean_blend;
+      controls.level_db = config.effect_level_db;
+      chorus.SetControls(controls);
+    } else if (config.effect == "compression") {
+      compressor.SetSampleRate(config.sample_rate_hz);
+      CompressorControls controls;
+      controls.sustain = config.effect_drive;
+      controls.attack = config.effect_tone;
+      controls.blend = config.effect_clean_blend;
+      controls.level_db = config.effect_level_db;
+      compressor.SetControls(controls);
     } else {
       plate.SetSampleRate(config.sample_rate_hz);
       PlateReverbControls controls;
@@ -609,12 +641,18 @@ int main(int argc, char** argv) {
       s = effect.Process(s);
     } else if (config.effect == "tubescreamer") {
       s = tubescreamer.Process(s);
+    } else if (config.effect == "rat") {
+      s = rat.Process(s);
+    } else if (config.effect == "compression") {
+      s = compressor.Process(s);
     }
     s = preamp.Process(s);
     if (has_power_stage) {
       s = power_stage.Process(s);
     }
-    if (config.effect == "plate") {
+    if (config.effect == "chorus") {
+      s = chorus.Process(s);
+    } else if (config.effect == "plate") {
       s = plate.Process(s);
     }
     output_samples[i] = s;

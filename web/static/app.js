@@ -771,6 +771,27 @@ function refreshEffectSchema() {
       cleanBlend: "Clean Blend",
       showCleanBlend: false,
     },
+    rat: {
+      drive: "Distortion",
+      tone: "Filter",
+      level: "Volume",
+      cleanBlend: "Clean Blend",
+      showCleanBlend: false,
+    },
+    chorus: {
+      drive: "Depth",
+      tone: "Tone",
+      level: "Level",
+      cleanBlend: "Mix",
+      showCleanBlend: true,
+    },
+    compression: {
+      drive: "Sustain",
+      tone: "Attack",
+      level: "Level",
+      cleanBlend: "Blend",
+      showCleanBlend: true,
+    },
     plate: {
       drive: "Mix",
       tone: "Brightness",

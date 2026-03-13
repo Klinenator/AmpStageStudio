@@ -37,8 +37,11 @@
 #endif
 
 #include "../amp_profile.h"
+#include "../effects/chorus_effect.h"
+#include "../effects/compressor_effect.h"
 #include "../effects/klon_effect.h"
 #include "../effects/plate_reverb_effect.h"
+#include "../effects/rat_effect.h"
 #include "../effects/tubescreamer_effect.h"
 #include "../live_control.h"
 #include "../power_stage.h"
@@ -99,14 +102,20 @@ struct RuntimeSettings {
   PowerStageControls power_controls;
   KlonControls klon_controls;
   TubeScreamerControls tubescreamer_controls;
+  RatControls rat_controls;
+  ChorusControls chorus_controls;
+  CompressorControls compressor_controls;
   PlateReverbControls plate_controls;
 };
 
 struct AppState {
   PreampProcessor preamp;
   PowerStage power_stage;
+  ChorusEffect chorus;
+  CompressorEffect compressor;
   KlonEffect effect;
   TubeScreamerEffect tubescreamer;
+  RatEffect rat;
   PlateReverbEffect plate;
   std::shared_ptr<RuntimeSettings> settings;
   std::string applied_amp_name;
@@ -934,7 +943,7 @@ void PrintUsage(const char* program_name) {
       << "  --preamp-file PATH       Explicit preamp profile file path\n"
       << "  --power-tube NAME        6V6, 6L6, EL34, or EL84\n"
       << "  --preset NAME            marshall or fender\n"
-      << "  --effect NAME            none, klon, tubescreamer, or plate\n"
+      << "  --effect NAME            none, klon, tubescreamer, rat, chorus, compression, or plate\n"
       << "  --device NAME            Duplex PortAudio device substring, default default\n"
       << "  --input-device NAME      PortAudio input device substring\n"
       << "  --output-device NAME     PortAudio output device substring\n"
@@ -956,10 +965,10 @@ void PrintUsage(const char* program_name) {
       << "  --power-drive-db VALUE   Master / phase inverter drive override\n"
       << "  --power-level-db VALUE   Final power-stage output trim override\n"
       << "  --power-bias-trim VALUE  Power-stage bias override\n"
-      << "  --effect-drive VALUE     Pedal drive, or plate mix 0..1, default 0.5\n"
-      << "  --effect-tone VALUE      Pedal tone, or plate brightness 0..1, default 0.5\n"
+      << "  --effect-drive VALUE     Shared effect control 1, default 0.5\n"
+      << "  --effect-tone VALUE      Shared effect control 2, default 0.5\n"
       << "  --effect-level-db VALUE  Effect output trim, default 0\n"
-      << "  --effect-clean-blend V   Klon clean blend, or plate decay 0..1, default 0.45\n"
+      << "  --effect-clean-blend V   Shared effect control 4, default 0.45\n"
       << "  --list-devices           Print PortAudio devices and exit\n";
 }
 
@@ -1135,6 +1144,9 @@ PaDeviceIndex FindOutputDevice(const std::string& needle) {
 bool IsEffectEnabled(const std::string& effect_name) {
   return effect_name == "klon" ||
          effect_name == "tubescreamer" ||
+         effect_name == "rat" ||
+         effect_name == "chorus" ||
+         effect_name == "compression" ||
          effect_name == "plate";
 }
 
@@ -1257,6 +1269,12 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
     settings->effect = EffectType::kKlon;
   } else if (config.effect == "tubescreamer") {
     settings->effect = EffectType::kTubeScreamer;
+  } else if (config.effect == "rat") {
+    settings->effect = EffectType::kRat;
+  } else if (config.effect == "chorus") {
+    settings->effect = EffectType::kChorus;
+  } else if (config.effect == "compression") {
+    settings->effect = EffectType::kCompressor;
   } else if (config.effect == "plate") {
     settings->effect = EffectType::kPlate;
   }
@@ -1269,6 +1287,20 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
   settings->tubescreamer_controls.drive = config.effect_drive;
   settings->tubescreamer_controls.tone = config.effect_tone;
   settings->tubescreamer_controls.level_db = config.effect_level_db;
+
+  settings->rat_controls.distortion = config.effect_drive;
+  settings->rat_controls.filter = config.effect_tone;
+  settings->rat_controls.level_db = config.effect_level_db;
+
+  settings->chorus_controls.depth = config.effect_drive;
+  settings->chorus_controls.tone = config.effect_tone;
+  settings->chorus_controls.mix = config.effect_clean_blend;
+  settings->chorus_controls.level_db = config.effect_level_db;
+
+  settings->compressor_controls.sustain = config.effect_drive;
+  settings->compressor_controls.attack = config.effect_tone;
+  settings->compressor_controls.blend = config.effect_clean_blend;
+  settings->compressor_controls.level_db = config.effect_level_db;
 
   settings->plate_controls.mix = config.effect_drive;
   settings->plate_controls.brightness = config.effect_tone;
@@ -1293,21 +1325,32 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
     if (live_state->power_level_db) settings->power_controls.level_db = *live_state->power_level_db;
     if (live_state->power_bias_trim) settings->power_controls.bias_trim = *live_state->power_bias_trim;
     if (live_state->effect_drive) {
+      settings->chorus_controls.depth = *live_state->effect_drive;
+      settings->compressor_controls.sustain = *live_state->effect_drive;
       settings->klon_controls.drive = *live_state->effect_drive;
       settings->tubescreamer_controls.drive = *live_state->effect_drive;
+      settings->rat_controls.distortion = *live_state->effect_drive;
       settings->plate_controls.mix = *live_state->effect_drive;
     }
     if (live_state->effect_tone) {
+      settings->chorus_controls.tone = *live_state->effect_tone;
+      settings->compressor_controls.attack = *live_state->effect_tone;
       settings->klon_controls.tone = *live_state->effect_tone;
       settings->tubescreamer_controls.tone = *live_state->effect_tone;
+      settings->rat_controls.filter = *live_state->effect_tone;
       settings->plate_controls.brightness = *live_state->effect_tone;
     }
     if (live_state->effect_level_db) {
+      settings->chorus_controls.level_db = *live_state->effect_level_db;
+      settings->compressor_controls.level_db = *live_state->effect_level_db;
       settings->klon_controls.level_db = *live_state->effect_level_db;
       settings->tubescreamer_controls.level_db = *live_state->effect_level_db;
+      settings->rat_controls.level_db = *live_state->effect_level_db;
       settings->plate_controls.level_db = *live_state->effect_level_db;
     }
     if (live_state->effect_clean_blend) {
+      settings->chorus_controls.mix = *live_state->effect_clean_blend;
+      settings->compressor_controls.blend = *live_state->effect_clean_blend;
       settings->klon_controls.clean_blend = *live_state->effect_clean_blend;
       settings->plate_controls.decay = *live_state->effect_clean_blend;
     }
@@ -1360,6 +1403,9 @@ int AudioCallback(const void* input_buffer,
       state->power_stage.Reset();
       state->effect.Reset();
       state->tubescreamer.Reset();
+      state->rat.Reset();
+      state->chorus.Reset();
+      state->compressor.Reset();
       state->plate.Reset();
       state->applied_amp_name = settings->amp_name;
       state->applied_preamp_name = settings->preamp_name;
@@ -1367,6 +1413,9 @@ int AudioCallback(const void* input_buffer,
     if (state->applied_effect != settings->effect) {
       state->effect.Reset();
       state->tubescreamer.Reset();
+      state->rat.Reset();
+      state->chorus.Reset();
+      state->compressor.Reset();
       state->plate.Reset();
       state->applied_effect = settings->effect;
     }
@@ -1383,8 +1432,11 @@ int AudioCallback(const void* input_buffer,
       state->power_stage.SetTubeType(settings->power_tube_type);
       state->power_stage.SetControls(settings->power_controls);
     }
+    state->chorus.SetControls(settings->chorus_controls);
+    state->compressor.SetControls(settings->compressor_controls);
     state->effect.SetControls(settings->klon_controls);
     state->tubescreamer.SetControls(settings->tubescreamer_controls);
+    state->rat.SetControls(settings->rat_controls);
     state->plate.SetControls(settings->plate_controls);
   }
 
@@ -1394,17 +1446,23 @@ int AudioCallback(const void* input_buffer,
       s = static_cast<float>(in[i * kInputChannels] / 32768.0f);
     }
 
-    if (settings && settings->effect == EffectType::kKlon) {
+    if (settings && settings->effect == EffectType::kCompressor) {
+      s = state->compressor.Process(s);
+    } else if (settings && settings->effect == EffectType::kKlon) {
       s = state->effect.Process(s);
     } else if (settings && settings->effect == EffectType::kTubeScreamer) {
       s = state->tubescreamer.Process(s);
+    } else if (settings && settings->effect == EffectType::kRat) {
+      s = state->rat.Process(s);
     }
 
     s = state->preamp.Process(s);
     if (settings && settings->has_power_stage) {
       s = state->power_stage.Process(s);
     }
-    if (settings && settings->effect == EffectType::kPlate) {
+    if (settings && settings->effect == EffectType::kChorus) {
+      s = state->chorus.Process(s);
+    } else if (settings && settings->effect == EffectType::kPlate) {
       s = state->plate.Process(s);
     }
 
@@ -1577,8 +1635,11 @@ int main(int argc, char** argv) {
   AppState state;
   state.preamp.SetSampleRate(kSampleRateHz);
   state.power_stage.SetSampleRate(kSampleRateHz);
+  state.chorus.SetSampleRate(kSampleRateHz);
+  state.compressor.SetSampleRate(kSampleRateHz);
   state.effect.SetSampleRate(kSampleRateHz);
   state.tubescreamer.SetSampleRate(kSampleRateHz);
+  state.rat.SetSampleRate(kSampleRateHz);
   state.plate.SetSampleRate(kSampleRateHz);
   std::atomic_store(&state.settings, settings);
 
