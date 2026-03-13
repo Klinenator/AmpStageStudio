@@ -14,6 +14,13 @@ enum class PowerTubeType {
 };
 
 struct PowerStageSpec {
+  double phase_inverter_hpf_hz = 22.0;
+  double phase_inverter_lpf_hz = 8800.0;
+  double phase_inverter_nominal_bias = 0.01;
+  double phase_inverter_positive_curve = 1.18;
+  double phase_inverter_negative_curve = 1.06;
+  double phase_inverter_asymmetry = 0.95;
+  double power_input_gain_db = 0.0;
   double input_hpf_hz = 35.0;
   double output_lpf_hz = 5200.0;
   double nominal_bias = 0.02;
@@ -63,6 +70,13 @@ inline PowerStageSpec PowerStageSpecForType(PowerTubeType type) {
   PowerStageSpec spec;
   switch (type) {
     case PowerTubeType::k6L6:
+      spec.phase_inverter_hpf_hz = 20.0;
+      spec.phase_inverter_lpf_hz = 9000.0;
+      spec.phase_inverter_nominal_bias = 0.008;
+      spec.phase_inverter_positive_curve = 1.15;
+      spec.phase_inverter_negative_curve = 1.04;
+      spec.phase_inverter_asymmetry = 0.94;
+      spec.power_input_gain_db = -0.8;
       spec.input_hpf_hz = 32.0;
       spec.output_lpf_hz = 5600.0;
       spec.nominal_bias = 0.015;
@@ -72,6 +86,13 @@ inline PowerStageSpec PowerStageSpecForType(PowerTubeType type) {
       spec.sag_amount = 0.08;
       break;
     case PowerTubeType::kEL34:
+      spec.phase_inverter_hpf_hz = 24.0;
+      spec.phase_inverter_lpf_hz = 8200.0;
+      spec.phase_inverter_nominal_bias = 0.012;
+      spec.phase_inverter_positive_curve = 1.24;
+      spec.phase_inverter_negative_curve = 1.10;
+      spec.phase_inverter_asymmetry = 0.96;
+      spec.power_input_gain_db = 0.4;
       spec.input_hpf_hz = 40.0;
       spec.output_lpf_hz = 4700.0;
       spec.nominal_bias = 0.03;
@@ -81,6 +102,13 @@ inline PowerStageSpec PowerStageSpecForType(PowerTubeType type) {
       spec.sag_amount = 0.10;
       break;
     case PowerTubeType::kEL84:
+      spec.phase_inverter_hpf_hz = 26.0;
+      spec.phase_inverter_lpf_hz = 7600.0;
+      spec.phase_inverter_nominal_bias = 0.014;
+      spec.phase_inverter_positive_curve = 1.26;
+      spec.phase_inverter_negative_curve = 1.14;
+      spec.phase_inverter_asymmetry = 0.97;
+      spec.power_input_gain_db = 1.0;
       spec.input_hpf_hz = 46.0;
       spec.output_lpf_hz = 5000.0;
       spec.nominal_bias = 0.028;
@@ -90,6 +118,13 @@ inline PowerStageSpec PowerStageSpecForType(PowerTubeType type) {
       spec.sag_amount = 0.12;
       break;
     case PowerTubeType::k6V6:
+      spec.phase_inverter_hpf_hz = 24.0;
+      spec.phase_inverter_lpf_hz = 7800.0;
+      spec.phase_inverter_nominal_bias = 0.013;
+      spec.phase_inverter_positive_curve = 1.23;
+      spec.phase_inverter_negative_curve = 1.12;
+      spec.phase_inverter_asymmetry = 0.96;
+      spec.power_input_gain_db = 0.8;
       spec.input_hpf_hz = 38.0;
       spec.output_lpf_hz = 5000.0;
       spec.nominal_bias = 0.022;
@@ -122,21 +157,37 @@ public:
   }
 
   void Reset() {
+    phase_inverter_hpf_.Reset();
+    phase_inverter_lpf_.Reset();
     input_hpf_.Reset();
     output_lpf_.Reset();
+    phase_inverter_env_ = 0.0;
     sag_env_ = 0.0;
   }
 
   float Process(float x) {
     double s = static_cast<double>(x);
+    s = phase_inverter_hpf_.Process(s);
+    s *= master_lin_;
+
+    const double phase_inverter_bias =
+        spec_.phase_inverter_nominal_bias - 0.04 * phase_inverter_env_;
+    s = ProcessPhaseInverter(s, phase_inverter_bias);
+    s = phase_inverter_lpf_.Process(s);
+
+    const double phase_inverter_abs = std::abs(s);
+    phase_inverter_env_ =
+        phase_inverter_env_alpha_ * phase_inverter_env_ +
+        (1.0 - phase_inverter_env_alpha_) * phase_inverter_abs;
+
     s = input_hpf_.Process(s);
-    s *= drive_lin_;
+    s *= power_input_gain_lin_;
 
     const double dynamic_bias =
         spec_.nominal_bias + controls_.bias_trim - spec_.sag_amount * sag_env_;
     s = ProcessNonlinear(s, dynamic_bias);
     s = output_lpf_.Process(s);
-    s *= level_lin_;
+    s *= output_level_lin_;
 
     const double abs_s = std::abs(s);
     sag_env_ = sag_env_alpha_ * sag_env_ + (1.0 - sag_env_alpha_) * abs_s;
@@ -144,6 +195,19 @@ public:
   }
 
 private:
+  double ProcessPhaseInverter(double x, double bias) const {
+    const double v = x + bias;
+    if (v >= 0.0) {
+      const double soft = std::tanh(spec_.phase_inverter_positive_curve * v);
+      const double cutoff = std::tanh(2.4 * std::max(0.0, v - 0.35));
+      return 0.92 * soft - 0.12 * cutoff + 0.010 * v * v * v;
+    }
+
+    const double n = -v;
+    return -spec_.phase_inverter_asymmetry *
+           std::tanh(spec_.phase_inverter_negative_curve * n + 0.08 * n * n);
+  }
+
   double ProcessNonlinear(double x, double bias) const {
     const double v = x + bias;
     double y = 0.0;
@@ -161,11 +225,17 @@ private:
   }
 
   void UpdateDerived() {
+    phase_inverter_hpf_.SetCutoff(sample_rate_hz_, spec_.phase_inverter_hpf_hz);
+    phase_inverter_lpf_.SetCutoff(sample_rate_hz_, spec_.phase_inverter_lpf_hz);
     input_hpf_.SetCutoff(sample_rate_hz_, spec_.input_hpf_hz);
     output_lpf_.SetCutoff(sample_rate_hz_, spec_.output_lpf_hz);
-    drive_lin_ = DbToLin(controls_.drive_db);
-    level_lin_ = DbToLin(controls_.level_db);
+    master_lin_ = DbToLin(controls_.drive_db);
+    power_input_gain_lin_ = DbToLin(spec_.power_input_gain_db);
+    output_level_lin_ = DbToLin(controls_.level_db);
 
+    const double phase_inverter_tau_seconds = 0.018;
+    phase_inverter_env_alpha_ =
+        std::exp(-1.0 / (sample_rate_hz_ * phase_inverter_tau_seconds));
     const double tau_seconds = 0.060;
     sag_env_alpha_ = std::exp(-1.0 / (sample_rate_hz_ * tau_seconds));
   }
@@ -179,11 +249,16 @@ private:
   PowerStageControls controls_;
 
   double sample_rate_hz_ = 48000.0;
-  double drive_lin_ = 1.0;
-  double level_lin_ = 1.0;
+  double master_lin_ = 1.0;
+  double power_input_gain_lin_ = 1.0;
+  double output_level_lin_ = 1.0;
+  double phase_inverter_env_ = 0.0;
+  double phase_inverter_env_alpha_ = 0.999;
   double sag_env_ = 0.0;
   double sag_env_alpha_ = 0.999;
 
+  OnePoleHPF phase_inverter_hpf_;
+  OnePoleLPF phase_inverter_lpf_;
   OnePoleHPF input_hpf_;
   OnePoleLPF output_lpf_;
 };

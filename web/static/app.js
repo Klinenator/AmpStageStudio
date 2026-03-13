@@ -442,6 +442,57 @@ function biquadResponse(coeffs, frequencyHz, sampleRate) {
   };
 }
 
+function bilinearTransformOrder3(coeffs, sampleRate) {
+  const k = 2 * sampleRate;
+  const k2 = k * k;
+  const k3 = k2 * k;
+  const transformPoly = (poly) => ([
+    poly[0] + poly[1] * k + poly[2] * k2 + poly[3] * k3,
+    3 * poly[0] + poly[1] * k - poly[2] * k2 - 3 * poly[3] * k3,
+    3 * poly[0] - poly[1] * k - poly[2] * k2 + 3 * poly[3] * k3,
+    poly[0] - poly[1] * k + poly[2] * k2 - poly[3] * k3,
+  ]);
+
+  const num = transformPoly(coeffs[0]);
+  const den = transformPoly(coeffs[1]);
+  const a0 = Math.abs(den[0]) < 1e-18 ? 1 : den[0];
+  return {
+    b0: num[0] / a0,
+    b1: num[1] / a0,
+    b2: num[2] / a0,
+    b3: num[3] / a0,
+    a1: den[1] / a0,
+    a2: den[2] / a0,
+    a3: den[3] / a0,
+  };
+}
+
+function order3Response(coeffs, frequencyHz, sampleRate) {
+  const omega = 2 * Math.PI * frequencyHz / sampleRate;
+  const z1 = {re: Math.cos(omega), im: -Math.sin(omega)};
+  const z2 = complexMul(z1, z1);
+  const z3 = complexMul(z2, z1);
+  const num = complexAdd(
+    complexAdd(
+      complexAdd({re: coeffs.b0, im: 0}, complexScale(z1, coeffs.b1)),
+      complexScale(z2, coeffs.b2),
+    ),
+    complexScale(z3, coeffs.b3),
+  );
+  const den = complexAdd(
+    complexAdd(
+      complexAdd({re: 1, im: 0}, complexScale(z1, coeffs.a1)),
+      complexScale(z2, coeffs.a2),
+    ),
+    complexScale(z3, coeffs.a3),
+  );
+  const denMagSq = den.re * den.re + den.im * den.im;
+  return {
+    re: (num.re * den.re + num.im * den.im) / denMagSq,
+    im: (num.im * den.re - num.re * den.im) / denMagSq,
+  };
+}
+
 function normalizeBiquad(b0, b1, b2, a0, a1, a2) {
   return {
     b0: b0 / a0,
@@ -509,8 +560,35 @@ function makeHighShelf(sampleRate, frequencyHz, slope, gainDb) {
 
 function currentResponseDbAt(frequencyHz, controls) {
   const sampleRate = 48000;
+  const preamp = $("preamp")?.value || "";
   const inputHpfHz = Number(currentControlSchema.input_hpf_hz || 60);
   const inputHpf = onePoleHpfResponse(sampleRate, inputHpfHz, frequencyHz);
+  const presence = biquadResponse(
+    makeHighShelf(sampleRate, 3200, 0.80, controlToDb(controls.presence, 4.5)),
+    frequencyHz,
+    sampleRate,
+  );
+
+  if (preamp === "mesa_boogie_mark_iic_plus") {
+    const definition = getReferenceTonestackDefinition();
+    if (definition) {
+      let total = inputHpf;
+      total = complexMul(
+        total,
+        order3Response(
+          bilinearTransformOrder3(
+            bassmanReferenceCoefficients(definition, controls),
+            sampleRate,
+          ),
+          frequencyHz,
+          sampleRate,
+        ),
+      );
+      total = complexMul(total, presence);
+      return 20 * Math.log10(Math.max(1e-6, complexMagnitude(total)));
+    }
+  }
+
   const bass = biquadResponse(
     makeLowShelf(sampleRate, 110, 0.70, controlToDb(controls.bass, 7.0)),
     frequencyHz,
@@ -528,11 +606,6 @@ function currentResponseDbAt(frequencyHz, controls) {
   );
   const treble = biquadResponse(
     makeHighShelf(sampleRate, 2200, 0.75, controlToDb(controls.treble, 7.0)),
-    frequencyHz,
-    sampleRate,
-  );
-  const presence = biquadResponse(
-    makeHighShelf(sampleRate, 3200, 0.80, controlToDb(controls.presence, 4.5)),
     frequencyHz,
     sampleRate,
   );

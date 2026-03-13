@@ -43,6 +43,9 @@ struct Config {
   std::optional<double> treble;
   std::optional<double> presence;
   std::optional<PowerTubeType> power_tube_type;
+  std::optional<double> power_drive_db;
+  std::optional<double> power_level_db;
+  std::optional<double> power_bias_trim;
   double effect_drive = 0.5;
   double effect_tone = 0.5;
   double effect_level_db = 0.0;
@@ -74,6 +77,9 @@ void PrintUsage(const char* program_name) {
       << "  --mid VALUE            Tone stack mid 0..10, default 5\n"
       << "  --treble VALUE         Tone stack treble 0..10, default 5\n"
       << "  --presence VALUE       Tone stack presence 0..10, default 5\n"
+      << "  --power-drive-db VAL   Master / phase inverter drive, amp default\n"
+      << "  --power-level-db VAL   Final power-stage output trim, amp default\n"
+      << "  --power-bias-trim VAL  Power-stage bias trim, amp default\n"
       << "  --effect-drive VALUE   Pedal drive, or plate mix 0..1, default 0.5\n"
       << "  --effect-tone VALUE    Pedal tone, or plate brightness 0..1, default 0.5\n"
       << "  --effect-level-db VAL  Output trim for effect, default 0\n"
@@ -453,6 +459,9 @@ int main(int argc, char** argv) {
         ParseOptionalDoubleArg(arg, "--mid", i, argc, argv, config.mid) ||
         ParseOptionalDoubleArg(arg, "--treble", i, argc, argv, config.treble) ||
         ParseOptionalDoubleArg(arg, "--presence", i, argc, argv, config.presence) ||
+        ParseOptionalDoubleArg(arg, "--power-drive-db", i, argc, argv, config.power_drive_db) ||
+        ParseOptionalDoubleArg(arg, "--power-level-db", i, argc, argv, config.power_level_db) ||
+        ParseOptionalDoubleArg(arg, "--power-bias-trim", i, argc, argv, config.power_bias_trim) ||
         ParseDoubleArg(arg, "--effect-drive", i, argc, argv, config.effect_drive) ||
         ParseDoubleArg(arg, "--effect-tone", i, argc, argv, config.effect_tone) ||
         ParseDoubleArg(arg, "--effect-level-db", i, argc, argv, config.effect_level_db) ||
@@ -577,8 +586,17 @@ int main(int argc, char** argv) {
   const PowerTubeType power_tube_type =
       config.power_tube_type.value_or(
           amp_profile ? amp_profile->power_tube_type : PowerTubeType::k6V6);
-  const PowerStageControls power_controls =
+  PowerStageControls power_controls =
       amp_profile ? amp_profile->power_defaults : PowerStageControls{};
+  if (config.power_drive_db.has_value()) {
+    power_controls.drive_db = *config.power_drive_db;
+  }
+  if (config.power_level_db.has_value()) {
+    power_controls.level_db = *config.power_level_db;
+  }
+  if (config.power_bias_trim.has_value()) {
+    power_controls.bias_trim = *config.power_bias_trim;
+  }
   if (has_power_stage) {
     power_stage.SetSampleRate(config.sample_rate_hz);
     power_stage.SetTubeType(power_tube_type);
