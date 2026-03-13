@@ -1,5 +1,9 @@
 name = fender_princeton
 circuit = aa1164
+ui_drive_label = Volume
+ui_level_label = Output
+ui_bright_label = Bright
+ui_bias_label = Edge
 input_hpf_hz = 48.0
 bright_hpf_hz = 2250.0
 plate_lpf_hz = 6100.0
@@ -13,4 +17,3 @@ default_drive_db = 11.0
 default_level_db = -4.5
 default_bright_db = 2.0
 default_bias_trim = 0.0
-

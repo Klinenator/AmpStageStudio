@@ -34,6 +34,17 @@ function syncOutput(id, value) {
   if (output) output.value = value;
 }
 
+async function refreshControlSchema() {
+  const schema = await fetchJson("/api/control-schema");
+  $("preamp_panel_title").textContent = schema.panel_title || "Preamp";
+  $("preamp_drive_label").textContent = schema.drive_label || "Drive";
+  $("preamp_level_label").textContent = schema.level_label || "Level";
+  $("preamp_bright_label").textContent = schema.bright_label || "Bright";
+  $("preamp_bias_label").textContent = schema.bias_label || "Bias";
+  $("preamp_schema_note").textContent =
+    schema.note || "These labels reflect the current modeled controls.";
+}
+
 function readStateFromInputs() {
   const payload = {};
   for (const key of stateKeys) {
@@ -84,6 +95,7 @@ async function saveState() {
     body: JSON.stringify(payload),
   });
   applyState(data);
+  await refreshControlSchema();
 }
 
 function scheduleSave() {
@@ -161,6 +173,7 @@ async function init() {
     }
 
     applyState(stateData);
+    await refreshControlSchema();
     for (const key of stateKeys) {
       const el = $(key);
       if (!el) continue;

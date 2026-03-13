@@ -1,5 +1,9 @@
 name = fender_deluxe_reverb
 circuit = ab763
+ui_drive_label = Volume
+ui_level_label = Output
+ui_bright_label = Bright
+ui_bias_label = Edge
 input_hpf_hz = 45.0
 bright_hpf_hz = 2200.0
 plate_lpf_hz = 6200.0
@@ -13,4 +17,3 @@ default_drive_db = 14.0
 default_level_db = -4.0
 default_bright_db = 2.0
 default_bias_trim = 0.0
-

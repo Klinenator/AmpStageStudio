@@ -51,11 +51,12 @@
 
       <section class="grid">
         <div class="panel">
-          <h2>Preamp</h2>
-          <label><span>Drive</span><input id="drive_db" type="range" min="0" max="24" step="0.1"><output id="drive_db_value"></output></label>
-          <label><span>Level</span><input id="level_db" type="range" min="-12" max="6" step="0.1"><output id="level_db_value"></output></label>
-          <label><span>Bright</span><input id="bright_db" type="range" min="0" max="8" step="0.1"><output id="bright_db_value"></output></label>
-          <label><span>Bias</span><input id="bias_trim" type="range" min="-0.2" max="0.2" step="0.005"><output id="bias_trim_value"></output></label>
+          <h2 id="preamp_panel_title">Preamp</h2>
+          <label><span id="preamp_drive_label">Drive</span><input id="drive_db" type="range" min="0" max="24" step="0.1"><output id="drive_db_value"></output></label>
+          <label><span id="preamp_level_label">Level</span><input id="level_db" type="range" min="-12" max="6" step="0.1"><output id="level_db_value"></output></label>
+          <label><span id="preamp_bright_label">Bright</span><input id="bright_db" type="range" min="0" max="8" step="0.1"><output id="bright_db_value"></output></label>
+          <label><span id="preamp_bias_label">Bias</span><input id="bias_trim" type="range" min="-0.2" max="0.2" step="0.005"><output id="bias_trim_value"></output></label>
+          <p id="preamp_schema_note">These labels reflect the current modeled controls.</p>
         </div>
 
         <div class="panel">

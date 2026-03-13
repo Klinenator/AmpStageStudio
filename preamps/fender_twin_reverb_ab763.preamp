@@ -1,5 +1,9 @@
 name = fender_twin_reverb_ab763
 circuit = ab763
+ui_drive_label = Volume
+ui_level_label = Output
+ui_bright_label = Bright
+ui_bias_label = Edge
 input_hpf_hz = 42.0
 bright_hpf_hz = 2350.0
 plate_lpf_hz = 6500.0
@@ -13,4 +17,3 @@ default_drive_db = 9.0
 default_level_db = -3.5
 default_bright_db = 2.5
 default_bias_trim = 0.0
-

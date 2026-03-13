@@ -11,6 +11,10 @@
 struct PreampProfile {
   std::string name;
   std::string circuit;
+  std::string ui_drive_label = "Drive";
+  std::string ui_level_label = "Level";
+  std::string ui_bright_label = "Bright";
+  std::string ui_bias_label = "Bias";
   TubeStageSpec spec;
   TubeStageControls defaults;
 };
@@ -73,6 +77,22 @@ inline std::optional<PreampProfile> LoadPreampProfileFromFile(
     }
     if (key == "circuit") {
       profile.circuit = value;
+      continue;
+    }
+    if (key == "ui_drive_label") {
+      profile.ui_drive_label = value;
+      continue;
+    }
+    if (key == "ui_level_label") {
+      profile.ui_level_label = value;
+      continue;
+    }
+    if (key == "ui_bright_label") {
+      profile.ui_bright_label = value;
+      continue;
+    }
+    if (key == "ui_bias_label") {
+      profile.ui_bias_label = value;
       continue;
     }
 

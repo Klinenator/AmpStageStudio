@@ -1,5 +1,9 @@
 name = marshall_jtm45
 circuit = jtm45
+ui_drive_label = Preamp
+ui_level_label = Output
+ui_bright_label = Bite
+ui_bias_label = Edge
 input_hpf_hz = 72.0
 bright_hpf_hz = 1850.0
 plate_lpf_hz = 4400.0
@@ -13,4 +17,3 @@ default_drive_db = 15.0
 default_level_db = -6.0
 default_bright_db = 2.5
 default_bias_trim = 0.02
-

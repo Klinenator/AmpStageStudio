@@ -1,5 +1,9 @@
 name = fender_bassman_5f6a
 circuit = 5f6a
+ui_drive_label = Volume
+ui_level_label = Output
+ui_bright_label = Presence
+ui_bias_label = Edge
 input_hpf_hz = 60.0
 bright_hpf_hz = 2100.0
 plate_lpf_hz = 5200.0
@@ -13,4 +17,3 @@ default_drive_db = 13.0
 default_level_db = -5.0
 default_bright_db = 1.8
 default_bias_trim = 0.01
-

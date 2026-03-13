@@ -1,5 +1,9 @@
 name = marshall_jcm800
 circuit = 2203
+ui_drive_label = Gain
+ui_level_label = Output
+ui_bright_label = Bite
+ui_bias_label = Edge
 input_hpf_hz = 85.0
 bright_hpf_hz = 1700.0
 plate_lpf_hz = 3900.0
@@ -13,4 +17,3 @@ default_drive_db = 18.0
 default_level_db = -7.0
 default_bright_db = 3.0
 default_bias_trim = 0.03
-

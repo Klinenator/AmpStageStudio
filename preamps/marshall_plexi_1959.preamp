@@ -1,5 +1,9 @@
 name = marshall_plexi_1959
 circuit = 1959_super_lead
+ui_drive_label = Preamp
+ui_level_label = Output
+ui_bright_label = Bite
+ui_bias_label = Edge
 input_hpf_hz = 78.0
 bright_hpf_hz = 1750.0
 plate_lpf_hz = 4100.0
@@ -13,4 +17,3 @@ default_drive_db = 17.0
 default_level_db = -6.5
 default_bright_db = 3.2
 default_bias_trim = 0.025
-

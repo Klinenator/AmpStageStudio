@@ -1,5 +1,9 @@
 name = mesa_boogie_mark_iic_plus
 circuit = mark_iic_plus
+ui_drive_label = Lead Drive
+ui_level_label = Output
+ui_bright_label = Top End
+ui_bias_label = Edge
 input_hpf_hz = 92.0
 bright_hpf_hz = 1650.0
 plate_lpf_hz = 3600.0

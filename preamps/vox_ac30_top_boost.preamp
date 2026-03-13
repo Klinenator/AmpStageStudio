@@ -1,5 +1,9 @@
 name = vox_ac30_top_boost
 circuit = ac30_top_boost
+ui_drive_label = Volume
+ui_level_label = Output
+ui_bright_label = Brilliance
+ui_bias_label = Edge
 input_hpf_hz = 68.0
 bright_hpf_hz = 2600.0
 plate_lpf_hz = 5600.0

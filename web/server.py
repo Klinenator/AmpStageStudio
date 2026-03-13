@@ -35,6 +35,19 @@ def parse_cfg(path: Path) -> dict[str, str]:
     return result
 
 
+def parse_profile_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    result: dict[str, str] = {}
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.split("#", 1)[0].strip()
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        result[key.strip()] = value.strip()
+    return result
+
+
 def write_cfg(path: Path, data: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     lines = [f"{key} = {value}" for key, value in data.items() if value != ""]
@@ -53,6 +66,50 @@ def list_preamps() -> list[str]:
 
 def list_power_tubes() -> list[str]:
     return ["6V6", "6L6", "EL34", "EL84"]
+
+
+def default_control_schema() -> dict[str, str]:
+    return {
+        "panel_title": "Preamp",
+        "drive_label": "Drive",
+        "level_label": "Level",
+        "bright_label": "Bright",
+        "bias_label": "Bias",
+        "note": "These labels reflect the current modeled controls. Full amp-specific tone stacks still need dedicated DSP parameters.",
+    }
+
+
+def resolve_selected_preamp_name(state: dict[str, str]) -> str | None:
+    preamp_name = state.get("preamp", "").strip()
+    if preamp_name:
+        return preamp_name
+
+    amp_name = state.get("amp", "").strip()
+    if amp_name:
+        amp_profile = parse_profile_file(AMPS_DIR / f"{amp_name}.amp")
+        resolved = amp_profile.get("preamp_name", "").strip()
+        if resolved:
+            return resolved
+
+    return None
+
+
+def load_control_schema(state: dict[str, str]) -> dict[str, str]:
+    schema = default_control_schema()
+    preamp_name = resolve_selected_preamp_name(state)
+    if not preamp_name:
+        return schema
+
+    preamp_profile = parse_profile_file(PREAMPS_DIR / f"{preamp_name}.preamp")
+    if not preamp_profile:
+        return schema
+
+    schema["panel_title"] = preamp_profile.get("name", preamp_name)
+    schema["drive_label"] = preamp_profile.get("ui_drive_label", schema["drive_label"])
+    schema["level_label"] = preamp_profile.get("ui_level_label", schema["level_label"])
+    schema["bright_label"] = preamp_profile.get("ui_bright_label", schema["bright_label"])
+    schema["bias_label"] = preamp_profile.get("ui_bias_label", schema["bias_label"])
+    return schema
 
 
 def list_alsa_devices(command: str, min_channels: int) -> list[dict[str, str]]:
@@ -179,6 +236,10 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/api/audio-devices":
             self._send_json(list_audio_devices())
+            return
+        if parsed.path == "/api/control-schema":
+            state = parse_cfg(self.control_path)
+            self._send_json(load_control_schema(state))
             return
         if parsed.path == "/api/health":
             self._send_json({"ok": True})
