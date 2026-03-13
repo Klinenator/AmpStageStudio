@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstring>
@@ -31,6 +32,7 @@ struct Config {
   std::string preamp_file;
   std::string preset = "marshall";
   std::string effect = "none";
+  std::string effects;
   std::string input_wav;
   int input_channel = 0;
   double frequency_hz = 82.41;
@@ -66,6 +68,7 @@ void PrintUsage(const char* program_name) {
       << "  --power-tube NAME      6V6, 6L6, EL34, or EL84\n"
       << "  --preset NAME          marshall or fender\n"
       << "  --effect NAME          none, klon, tubescreamer, rat, chorus, compression, or plate, default none\n"
+      << "  --effects LIST         Comma-separated chain, e.g. compression,rat,chorus,plate\n"
       << "  --input-wav PATH       Use a WAV file instead of generating a sine\n"
       << "  --input-channel N      Channel to read from WAV input, default 0\n"
       << "  --frequency-hz VALUE   Input sine frequency, default 82.41\n"
@@ -433,6 +436,35 @@ bool IsEffectEnabled(const std::string& effect_name) {
          effect_name == "compression" ||
          effect_name == "plate";
 }
+
+std::string TrimString(std::string value) {
+  value.erase(value.begin(),
+              std::find_if(value.begin(), value.end(),
+                           [](unsigned char c) { return !std::isspace(c); }));
+  value.erase(std::find_if(value.rbegin(), value.rend(),
+                           [](unsigned char c) { return !std::isspace(c); }).base(),
+              value.end());
+  return value;
+}
+
+std::vector<std::string> SplitCommaList(const std::string& value) {
+  std::vector<std::string> items;
+  std::size_t start = 0;
+  while (start <= value.size()) {
+    const std::size_t comma = value.find(',', start);
+    const std::string item = TrimString(
+        value.substr(start, comma == std::string::npos ? std::string::npos
+                                                       : comma - start));
+    if (!item.empty()) {
+      items.push_back(item);
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    start = comma + 1;
+  }
+  return items;
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -451,6 +483,7 @@ int main(int argc, char** argv) {
         ParseStringArg(arg, "--preamp-file", i, argc, argv, config.preamp_file) ||
         ParseStringArg(arg, "--preset", i, argc, argv, config.preset) ||
         ParseStringArg(arg, "--effect", i, argc, argv, config.effect) ||
+        ParseStringArg(arg, "--effects", i, argc, argv, config.effects) ||
         ParseStringArg(arg, "--input-wav", i, argc, argv, config.input_wav) ||
         ParseIntArg(arg, "--input-channel", i, argc, argv, config.input_channel) ||
         ParseDoubleArg(arg, "--frequency-hz", i, argc, argv, config.frequency_hz) ||
@@ -514,6 +547,40 @@ int main(int argc, char** argv) {
     std::cerr << "Unknown effect: " << config.effect << "\n";
     return 1;
   }
+  for (const std::string& effect_name : SplitCommaList(config.effects)) {
+    if (!IsEffectEnabled(effect_name)) {
+      std::cerr << "Unknown effect in --effects: " << effect_name << "\n";
+      return 1;
+    }
+  }
+
+  bool compression_enabled = false;
+  bool klon_enabled = false;
+  bool tubescreamer_enabled = false;
+  bool rat_enabled = false;
+  bool chorus_enabled = false;
+  bool plate_enabled = false;
+  const auto enable_effect = [&](const std::string& effect_name) {
+    if (effect_name == "compression") {
+      compression_enabled = true;
+    } else if (effect_name == "klon") {
+      klon_enabled = true;
+    } else if (effect_name == "tubescreamer") {
+      tubescreamer_enabled = true;
+    } else if (effect_name == "rat") {
+      rat_enabled = true;
+    } else if (effect_name == "chorus") {
+      chorus_enabled = true;
+    } else if (effect_name == "plate") {
+      plate_enabled = true;
+    }
+  };
+  if (config.effect != "none") {
+    enable_effect(config.effect);
+  }
+  for (const std::string& effect_name : SplitCommaList(config.effects)) {
+    enable_effect(effect_name);
+  }
 
   ChorusEffect chorus;
   CompressorEffect compressor;
@@ -521,54 +588,57 @@ int main(int argc, char** argv) {
   TubeScreamerEffect tubescreamer;
   RatEffect rat;
   PlateReverbEffect plate;
-  if (IsEffectEnabled(config.effect)) {
-    if (config.effect == "klon") {
-      effect.SetSampleRate(config.sample_rate_hz);
-      KlonControls controls;
-      controls.drive = config.effect_drive;
-      controls.tone = config.effect_tone;
-      controls.level_db = config.effect_level_db;
-      controls.clean_blend = config.effect_clean_blend;
-      effect.SetControls(controls);
-    } else if (config.effect == "tubescreamer") {
-      tubescreamer.SetSampleRate(config.sample_rate_hz);
-      TubeScreamerControls controls;
-      controls.drive = config.effect_drive;
-      controls.tone = config.effect_tone;
-      controls.level_db = config.effect_level_db;
-      tubescreamer.SetControls(controls);
-    } else if (config.effect == "rat") {
-      rat.SetSampleRate(config.sample_rate_hz);
-      RatControls controls;
-      controls.distortion = config.effect_drive;
-      controls.filter = config.effect_tone;
-      controls.level_db = config.effect_level_db;
-      rat.SetControls(controls);
-    } else if (config.effect == "chorus") {
-      chorus.SetSampleRate(config.sample_rate_hz);
-      ChorusControls controls;
-      controls.depth = config.effect_drive;
-      controls.tone = config.effect_tone;
-      controls.mix = config.effect_clean_blend;
-      controls.level_db = config.effect_level_db;
-      chorus.SetControls(controls);
-    } else if (config.effect == "compression") {
-      compressor.SetSampleRate(config.sample_rate_hz);
-      CompressorControls controls;
-      controls.sustain = config.effect_drive;
-      controls.attack = config.effect_tone;
-      controls.blend = config.effect_clean_blend;
-      controls.level_db = config.effect_level_db;
-      compressor.SetControls(controls);
-    } else {
-      plate.SetSampleRate(config.sample_rate_hz);
-      PlateReverbControls controls;
-      controls.mix = config.effect_drive;
-      controls.brightness = config.effect_tone;
-      controls.level_db = config.effect_level_db;
-      controls.decay = config.effect_clean_blend;
-      plate.SetControls(controls);
-    }
+  if (compression_enabled) {
+    compressor.SetSampleRate(config.sample_rate_hz);
+    CompressorControls controls;
+    controls.sustain = config.effect_drive;
+    controls.attack = config.effect_tone;
+    controls.blend = config.effect_clean_blend;
+    controls.level_db = config.effect_level_db;
+    compressor.SetControls(controls);
+  }
+  if (klon_enabled) {
+    effect.SetSampleRate(config.sample_rate_hz);
+    KlonControls controls;
+    controls.drive = config.effect_drive;
+    controls.tone = config.effect_tone;
+    controls.level_db = config.effect_level_db;
+    controls.clean_blend = config.effect_clean_blend;
+    effect.SetControls(controls);
+  }
+  if (tubescreamer_enabled) {
+    tubescreamer.SetSampleRate(config.sample_rate_hz);
+    TubeScreamerControls controls;
+    controls.drive = config.effect_drive;
+    controls.tone = config.effect_tone;
+    controls.level_db = config.effect_level_db;
+    tubescreamer.SetControls(controls);
+  }
+  if (rat_enabled) {
+    rat.SetSampleRate(config.sample_rate_hz);
+    RatControls controls;
+    controls.distortion = config.effect_drive;
+    controls.filter = config.effect_tone;
+    controls.level_db = config.effect_level_db;
+    rat.SetControls(controls);
+  }
+  if (chorus_enabled) {
+    chorus.SetSampleRate(config.sample_rate_hz);
+    ChorusControls controls;
+    controls.depth = config.effect_drive;
+    controls.tone = config.effect_tone;
+    controls.mix = config.effect_clean_blend;
+    controls.level_db = config.effect_level_db;
+    chorus.SetControls(controls);
+  }
+  if (plate_enabled) {
+    plate.SetSampleRate(config.sample_rate_hz);
+    PlateReverbControls controls;
+    controls.mix = config.effect_drive;
+    controls.brightness = config.effect_tone;
+    controls.level_db = config.effect_level_db;
+    controls.decay = config.effect_clean_blend;
+    plate.SetControls(controls);
   }
 
   auto preamp_profile = ResolvePreampProfile(config);
@@ -637,22 +707,26 @@ int main(int argc, char** argv) {
 
   for (std::size_t i = 0; i < output_samples.size(); ++i) {
     float s = output_samples[i];
-    if (config.effect == "klon") {
-      s = effect.Process(s);
-    } else if (config.effect == "tubescreamer") {
-      s = tubescreamer.Process(s);
-    } else if (config.effect == "rat") {
-      s = rat.Process(s);
-    } else if (config.effect == "compression") {
+    if (compression_enabled) {
       s = compressor.Process(s);
+    }
+    if (klon_enabled) {
+      s = effect.Process(s);
+    }
+    if (tubescreamer_enabled) {
+      s = tubescreamer.Process(s);
+    }
+    if (rat_enabled) {
+      s = rat.Process(s);
     }
     s = preamp.Process(s);
     if (has_power_stage) {
       s = power_stage.Process(s);
     }
-    if (config.effect == "chorus") {
+    if (chorus_enabled) {
       s = chorus.Process(s);
-    } else if (config.effect == "plate") {
+    }
+    if (plate_enabled) {
       s = plate.Process(s);
     }
     output_samples[i] = s;
@@ -675,7 +749,24 @@ int main(int argc, char** argv) {
   if (has_power_stage) {
     std::cout << ", power tube: " << PowerTubeTypeName(power_tube_type);
   }
-  std::cout << ", effect: " << config.effect;
+  std::vector<std::string> enabled_effects;
+  if (compression_enabled) enabled_effects.push_back("compression");
+  if (klon_enabled) enabled_effects.push_back("klon");
+  if (tubescreamer_enabled) enabled_effects.push_back("tubescreamer");
+  if (rat_enabled) enabled_effects.push_back("rat");
+  if (chorus_enabled) enabled_effects.push_back("chorus");
+  if (plate_enabled) enabled_effects.push_back("plate");
+  std::cout << ", effects: ";
+  if (enabled_effects.empty()) {
+    std::cout << "none";
+  } else {
+    for (std::size_t i = 0; i < enabled_effects.size(); ++i) {
+      if (i > 0) {
+        std::cout << " -> ";
+      }
+      std::cout << enabled_effects[i];
+    }
+  }
   if (!config.input_wav.empty()) {
     std::cout << ", input WAV: " << config.input_wav
               << ", channel: " << config.input_channel;

@@ -27,19 +27,7 @@
           <span>Power Tube</span>
           <select id="power_tube_type"></select>
         </label>
-        <label>
-          <span>Effect</span>
-          <select id="effect">
-            <option value="none">none</option>
-            <option value="klon">klon</option>
-            <option value="tubescreamer">tubescreamer</option>
-            <option value="rat">rat</option>
-            <option value="chorus">chorus</option>
-            <option value="compression">compression</option>
-            <option value="plate">plate</option>
-          </select>
-        </label>
-        <p>Audio device changes are saved here and take effect the next time the live engine starts.</p>
+        <p>Audio device changes are saved here and take effect the next time the live engine starts. Effects run in a fixed chain: compression, Klon, Tube Screamer, RAT, amp, chorus, then plate.</p>
       </section>
 
       <section class="panel">
@@ -78,12 +66,61 @@
           <label><span>Bias</span><input id="power_bias_trim" type="range" min="-0.2" max="0.2" step="0.005"><output id="power_bias_trim_value"></output></label>
         </div>
 
-        <div class="panel">
-          <h2>Effect</h2>
-          <label id="effect_drive_row"><span id="effect_drive_label">Drive</span><input id="effect_drive" type="range" min="0" max="1" step="0.01"><output id="effect_drive_value"></output></label>
-          <label id="effect_tone_row"><span id="effect_tone_label">Tone</span><input id="effect_tone" type="range" min="0" max="1" step="0.01"><output id="effect_tone_value"></output></label>
-          <label id="effect_level_row"><span id="effect_level_label">Level</span><input id="effect_level_db" type="range" min="-12" max="12" step="0.1"><output id="effect_level_db_value"></output></label>
-          <label id="effect_clean_blend_row"><span id="effect_clean_blend_label">Clean Blend</span><input id="effect_clean_blend" type="range" min="0" max="1" step="0.01"><output id="effect_clean_blend_value"></output></label>
+      </section>
+
+      <section class="panel effect-chain-panel">
+        <div class="tone-plot-header">
+          <div>
+            <h2>Effects Chain</h2>
+            <p>Preamp-side effects feed the amp input. Chorus and plate sit after the amp for a cleaner tail.</p>
+          </div>
+        </div>
+        <div class="effect-grid">
+          <section class="effect-block" id="effect_compression_block">
+            <label class="effect-toggle"><span>Compression</span><input id="effect_compression_enabled" type="checkbox"></label>
+            <label><span>Sustain</span><input id="compressor_sustain" type="range" min="0" max="1" step="0.01"><output id="compressor_sustain_value"></output></label>
+            <label><span>Attack</span><input id="compressor_attack" type="range" min="0" max="1" step="0.01"><output id="compressor_attack_value"></output></label>
+            <label><span>Level</span><input id="compressor_level_db" type="range" min="-12" max="12" step="0.1"><output id="compressor_level_db_value"></output></label>
+            <label><span>Blend</span><input id="compressor_blend" type="range" min="0" max="1" step="0.01"><output id="compressor_blend_value"></output></label>
+          </section>
+
+          <section class="effect-block" id="effect_klon_block">
+            <label class="effect-toggle"><span>Klon</span><input id="effect_klon_enabled" type="checkbox"></label>
+            <label><span>Drive</span><input id="klon_drive" type="range" min="0" max="1" step="0.01"><output id="klon_drive_value"></output></label>
+            <label><span>Tone</span><input id="klon_tone" type="range" min="0" max="1" step="0.01"><output id="klon_tone_value"></output></label>
+            <label><span>Level</span><input id="klon_level_db" type="range" min="-12" max="12" step="0.1"><output id="klon_level_db_value"></output></label>
+            <label><span>Clean</span><input id="klon_clean_blend" type="range" min="0" max="1" step="0.01"><output id="klon_clean_blend_value"></output></label>
+          </section>
+
+          <section class="effect-block" id="effect_tubescreamer_block">
+            <label class="effect-toggle"><span>Tube Screamer</span><input id="effect_tubescreamer_enabled" type="checkbox"></label>
+            <label><span>Drive</span><input id="tubescreamer_drive" type="range" min="0" max="1" step="0.01"><output id="tubescreamer_drive_value"></output></label>
+            <label><span>Tone</span><input id="tubescreamer_tone" type="range" min="0" max="1" step="0.01"><output id="tubescreamer_tone_value"></output></label>
+            <label><span>Level</span><input id="tubescreamer_level_db" type="range" min="-12" max="12" step="0.1"><output id="tubescreamer_level_db_value"></output></label>
+          </section>
+
+          <section class="effect-block" id="effect_rat_block">
+            <label class="effect-toggle"><span>RAT</span><input id="effect_rat_enabled" type="checkbox"></label>
+            <label><span>Distortion</span><input id="rat_distortion" type="range" min="0" max="1" step="0.01"><output id="rat_distortion_value"></output></label>
+            <label><span>Filter</span><input id="rat_filter" type="range" min="0" max="1" step="0.01"><output id="rat_filter_value"></output></label>
+            <label><span>Volume</span><input id="rat_level_db" type="range" min="-12" max="12" step="0.1"><output id="rat_level_db_value"></output></label>
+          </section>
+
+          <section class="effect-block" id="effect_chorus_block">
+            <label class="effect-toggle"><span>Chorus</span><input id="effect_chorus_enabled" type="checkbox"></label>
+            <label><span>Depth</span><input id="chorus_depth" type="range" min="0" max="1" step="0.01"><output id="chorus_depth_value"></output></label>
+            <label><span>Tone</span><input id="chorus_tone" type="range" min="0" max="1" step="0.01"><output id="chorus_tone_value"></output></label>
+            <label><span>Level</span><input id="chorus_level_db" type="range" min="-12" max="12" step="0.1"><output id="chorus_level_db_value"></output></label>
+            <label><span>Mix</span><input id="chorus_mix" type="range" min="0" max="1" step="0.01"><output id="chorus_mix_value"></output></label>
+          </section>
+
+          <section class="effect-block" id="effect_plate_block">
+            <label class="effect-toggle"><span>Plate</span><input id="effect_plate_enabled" type="checkbox"></label>
+            <label><span>Mix</span><input id="plate_mix" type="range" min="0" max="1" step="0.01"><output id="plate_mix_value"></output></label>
+            <label><span>Bright</span><input id="plate_brightness" type="range" min="0" max="1" step="0.01"><output id="plate_brightness_value"></output></label>
+            <label><span>Level</span><input id="plate_level_db" type="range" min="-12" max="12" step="0.1"><output id="plate_level_db_value"></output></label>
+            <label><span>Decay</span><input id="plate_decay" type="range" min="0" max="1" step="0.01"><output id="plate_decay_value"></output></label>
+          </section>
         </div>
       </section>
 

@@ -59,6 +59,7 @@ std::atomic<bool> g_running{true};
 
 struct Config {
   std::string effect = "none";
+  std::string effects;
   std::string amp_name;
   std::string amp_file;
   std::string preamp_name;
@@ -94,12 +95,17 @@ struct Config {
 struct RuntimeSettings {
   std::string amp_name;
   std::string preamp_name;
-  EffectType effect = EffectType::kNone;
   PreampProfile preamp_profile;
   TubeStageControls stage_controls;
   bool has_power_stage = false;
   PowerTubeType power_tube_type = PowerTubeType::k6V6;
   PowerStageControls power_controls;
+  bool compression_enabled = false;
+  bool klon_enabled = false;
+  bool tubescreamer_enabled = false;
+  bool rat_enabled = false;
+  bool chorus_enabled = false;
+  bool plate_enabled = false;
   KlonControls klon_controls;
   TubeScreamerControls tubescreamer_controls;
   RatControls rat_controls;
@@ -120,7 +126,7 @@ struct AppState {
   std::shared_ptr<RuntimeSettings> settings;
   std::string applied_amp_name;
   std::string applied_preamp_name;
-  EffectType applied_effect = EffectType::kNone;
+  std::string applied_effect_signature;
   bool applied_power_stage_enabled = false;
   PowerTubeType applied_power_tube_type = PowerTubeType::k6V6;
 };
@@ -944,6 +950,7 @@ void PrintUsage(const char* program_name) {
       << "  --power-tube NAME        6V6, 6L6, EL34, or EL84\n"
       << "  --preset NAME            marshall or fender\n"
       << "  --effect NAME            none, klon, tubescreamer, rat, chorus, compression, or plate\n"
+      << "  --effects LIST           Comma-separated chain, e.g. compression,rat,chorus,plate\n"
       << "  --device NAME            Duplex PortAudio device substring, default default\n"
       << "  --input-device NAME      PortAudio input device substring\n"
       << "  --output-device NAME     PortAudio output device substring\n"
@@ -1150,6 +1157,72 @@ bool IsEffectEnabled(const std::string& effect_name) {
          effect_name == "plate";
 }
 
+std::vector<std::string> SplitCommaList(const std::string& value) {
+  std::vector<std::string> items;
+  std::size_t start = 0;
+  while (start <= value.size()) {
+    const std::size_t comma = value.find(',', start);
+    const std::string item = TrimString(
+        value.substr(start, comma == std::string::npos ? std::string::npos
+                                                       : comma - start));
+    if (!item.empty()) {
+      items.push_back(item);
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    start = comma + 1;
+  }
+  return items;
+}
+
+void EnableEffectName(RuntimeSettings& settings, const std::string& effect_name) {
+  if (effect_name == "compression") {
+    settings.compression_enabled = true;
+  } else if (effect_name == "klon") {
+    settings.klon_enabled = true;
+  } else if (effect_name == "tubescreamer") {
+    settings.tubescreamer_enabled = true;
+  } else if (effect_name == "rat") {
+    settings.rat_enabled = true;
+  } else if (effect_name == "chorus") {
+    settings.chorus_enabled = true;
+  } else if (effect_name == "plate") {
+    settings.plate_enabled = true;
+  }
+}
+
+bool HasExplicitEffectChain(const LiveControlState& state) {
+  return state.effect_compression_enabled.has_value() ||
+         state.effect_klon_enabled.has_value() ||
+         state.effect_tubescreamer_enabled.has_value() ||
+         state.effect_rat_enabled.has_value() ||
+         state.effect_chorus_enabled.has_value() ||
+         state.effect_plate_enabled.has_value();
+}
+
+std::string EffectChainSummary(const RuntimeSettings& settings) {
+  std::vector<std::string> enabled;
+  if (settings.compression_enabled) enabled.push_back("compression");
+  if (settings.klon_enabled) enabled.push_back("klon");
+  if (settings.tubescreamer_enabled) enabled.push_back("tubescreamer");
+  if (settings.rat_enabled) enabled.push_back("rat");
+  if (settings.chorus_enabled) enabled.push_back("chorus");
+  if (settings.plate_enabled) enabled.push_back("plate");
+  if (enabled.empty()) {
+    return "none";
+  }
+
+  std::string text;
+  for (std::size_t i = 0; i < enabled.size(); ++i) {
+    if (i > 0) {
+      text += " -> ";
+    }
+    text += enabled[i];
+  }
+  return text;
+}
+
 std::optional<PreampProfile> ResolvePreampProfile(const Config& config) {
   if (!config.preamp_file.empty()) {
     std::string error;
@@ -1265,50 +1338,72 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
   if (config.power_level_db) settings->power_controls.level_db = *config.power_level_db;
   if (config.power_bias_trim) settings->power_controls.bias_trim = *config.power_bias_trim;
 
-  if (config.effect == "klon") {
-    settings->effect = EffectType::kKlon;
-  } else if (config.effect == "tubescreamer") {
-    settings->effect = EffectType::kTubeScreamer;
-  } else if (config.effect == "rat") {
-    settings->effect = EffectType::kRat;
-  } else if (config.effect == "chorus") {
-    settings->effect = EffectType::kChorus;
-  } else if (config.effect == "compression") {
-    settings->effect = EffectType::kCompressor;
-  } else if (config.effect == "plate") {
-    settings->effect = EffectType::kPlate;
+  if (config.effect != "none" && IsEffectEnabled(config.effect)) {
+    EnableEffectName(*settings, config.effect);
+  }
+  for (const std::string& effect_name : SplitCommaList(config.effects)) {
+    EnableEffectName(*settings, effect_name);
   }
 
-  settings->klon_controls.drive = config.effect_drive;
-  settings->klon_controls.tone = config.effect_tone;
-  settings->klon_controls.level_db = config.effect_level_db;
-  settings->klon_controls.clean_blend = config.effect_clean_blend;
+  auto apply_legacy_shared_controls = [&](const std::string& effect_name) {
+    if (effect_name == "compression") {
+      settings->compressor_controls.sustain = config.effect_drive;
+      settings->compressor_controls.attack = config.effect_tone;
+      settings->compressor_controls.level_db = config.effect_level_db;
+      settings->compressor_controls.blend = config.effect_clean_blend;
+    } else if (effect_name == "klon") {
+      settings->klon_controls.drive = config.effect_drive;
+      settings->klon_controls.tone = config.effect_tone;
+      settings->klon_controls.level_db = config.effect_level_db;
+      settings->klon_controls.clean_blend = config.effect_clean_blend;
+    } else if (effect_name == "tubescreamer") {
+      settings->tubescreamer_controls.drive = config.effect_drive;
+      settings->tubescreamer_controls.tone = config.effect_tone;
+      settings->tubescreamer_controls.level_db = config.effect_level_db;
+    } else if (effect_name == "rat") {
+      settings->rat_controls.distortion = config.effect_drive;
+      settings->rat_controls.filter = config.effect_tone;
+      settings->rat_controls.level_db = config.effect_level_db;
+    } else if (effect_name == "chorus") {
+      settings->chorus_controls.depth = config.effect_drive;
+      settings->chorus_controls.tone = config.effect_tone;
+      settings->chorus_controls.level_db = config.effect_level_db;
+      settings->chorus_controls.mix = config.effect_clean_blend;
+    } else if (effect_name == "plate") {
+      settings->plate_controls.mix = config.effect_drive;
+      settings->plate_controls.brightness = config.effect_tone;
+      settings->plate_controls.level_db = config.effect_level_db;
+      settings->plate_controls.decay = config.effect_clean_blend;
+    }
+  };
 
-  settings->tubescreamer_controls.drive = config.effect_drive;
-  settings->tubescreamer_controls.tone = config.effect_tone;
-  settings->tubescreamer_controls.level_db = config.effect_level_db;
-
-  settings->rat_controls.distortion = config.effect_drive;
-  settings->rat_controls.filter = config.effect_tone;
-  settings->rat_controls.level_db = config.effect_level_db;
-
-  settings->chorus_controls.depth = config.effect_drive;
-  settings->chorus_controls.tone = config.effect_tone;
-  settings->chorus_controls.mix = config.effect_clean_blend;
-  settings->chorus_controls.level_db = config.effect_level_db;
-
-  settings->compressor_controls.sustain = config.effect_drive;
-  settings->compressor_controls.attack = config.effect_tone;
-  settings->compressor_controls.blend = config.effect_clean_blend;
-  settings->compressor_controls.level_db = config.effect_level_db;
-
-  settings->plate_controls.mix = config.effect_drive;
-  settings->plate_controls.brightness = config.effect_tone;
-  settings->plate_controls.level_db = config.effect_level_db;
-  settings->plate_controls.decay = config.effect_clean_blend;
+  if (config.effect != "none" && IsEffectEnabled(config.effect)) {
+    apply_legacy_shared_controls(config.effect);
+  }
 
   if (live_state) {
-    if (live_state->effect) settings->effect = *live_state->effect;
+    if (!HasExplicitEffectChain(*live_state) && live_state->effect) {
+      EnableEffectName(*settings, EffectTypeName(*live_state->effect));
+      apply_legacy_shared_controls(EffectTypeName(*live_state->effect));
+    }
+    if (live_state->effect_compression_enabled) {
+      settings->compression_enabled = *live_state->effect_compression_enabled;
+    }
+    if (live_state->effect_klon_enabled) {
+      settings->klon_enabled = *live_state->effect_klon_enabled;
+    }
+    if (live_state->effect_tubescreamer_enabled) {
+      settings->tubescreamer_enabled = *live_state->effect_tubescreamer_enabled;
+    }
+    if (live_state->effect_rat_enabled) {
+      settings->rat_enabled = *live_state->effect_rat_enabled;
+    }
+    if (live_state->effect_chorus_enabled) {
+      settings->chorus_enabled = *live_state->effect_chorus_enabled;
+    }
+    if (live_state->effect_plate_enabled) {
+      settings->plate_enabled = *live_state->effect_plate_enabled;
+    }
     if (live_state->power_tube_type) {
       settings->has_power_stage = true;
       settings->power_tube_type = *live_state->power_tube_type;
@@ -1325,35 +1420,91 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
     if (live_state->power_level_db) settings->power_controls.level_db = *live_state->power_level_db;
     if (live_state->power_bias_trim) settings->power_controls.bias_trim = *live_state->power_bias_trim;
     if (live_state->effect_drive) {
-      settings->chorus_controls.depth = *live_state->effect_drive;
-      settings->compressor_controls.sustain = *live_state->effect_drive;
-      settings->klon_controls.drive = *live_state->effect_drive;
-      settings->tubescreamer_controls.drive = *live_state->effect_drive;
-      settings->rat_controls.distortion = *live_state->effect_drive;
-      settings->plate_controls.mix = *live_state->effect_drive;
+      if (live_state->effect && !HasExplicitEffectChain(*live_state)) {
+        if (*live_state->effect == EffectType::kCompressor) {
+          settings->compressor_controls.sustain = *live_state->effect_drive;
+        } else if (*live_state->effect == EffectType::kKlon) {
+          settings->klon_controls.drive = *live_state->effect_drive;
+        } else if (*live_state->effect == EffectType::kTubeScreamer) {
+          settings->tubescreamer_controls.drive = *live_state->effect_drive;
+        } else if (*live_state->effect == EffectType::kRat) {
+          settings->rat_controls.distortion = *live_state->effect_drive;
+        } else if (*live_state->effect == EffectType::kChorus) {
+          settings->chorus_controls.depth = *live_state->effect_drive;
+        } else if (*live_state->effect == EffectType::kPlate) {
+          settings->plate_controls.mix = *live_state->effect_drive;
+        }
+      }
     }
     if (live_state->effect_tone) {
-      settings->chorus_controls.tone = *live_state->effect_tone;
-      settings->compressor_controls.attack = *live_state->effect_tone;
-      settings->klon_controls.tone = *live_state->effect_tone;
-      settings->tubescreamer_controls.tone = *live_state->effect_tone;
-      settings->rat_controls.filter = *live_state->effect_tone;
-      settings->plate_controls.brightness = *live_state->effect_tone;
+      if (live_state->effect && !HasExplicitEffectChain(*live_state)) {
+        if (*live_state->effect == EffectType::kCompressor) {
+          settings->compressor_controls.attack = *live_state->effect_tone;
+        } else if (*live_state->effect == EffectType::kKlon) {
+          settings->klon_controls.tone = *live_state->effect_tone;
+        } else if (*live_state->effect == EffectType::kTubeScreamer) {
+          settings->tubescreamer_controls.tone = *live_state->effect_tone;
+        } else if (*live_state->effect == EffectType::kRat) {
+          settings->rat_controls.filter = *live_state->effect_tone;
+        } else if (*live_state->effect == EffectType::kChorus) {
+          settings->chorus_controls.tone = *live_state->effect_tone;
+        } else if (*live_state->effect == EffectType::kPlate) {
+          settings->plate_controls.brightness = *live_state->effect_tone;
+        }
+      }
     }
     if (live_state->effect_level_db) {
-      settings->chorus_controls.level_db = *live_state->effect_level_db;
-      settings->compressor_controls.level_db = *live_state->effect_level_db;
-      settings->klon_controls.level_db = *live_state->effect_level_db;
-      settings->tubescreamer_controls.level_db = *live_state->effect_level_db;
-      settings->rat_controls.level_db = *live_state->effect_level_db;
-      settings->plate_controls.level_db = *live_state->effect_level_db;
+      if (live_state->effect && !HasExplicitEffectChain(*live_state)) {
+        if (*live_state->effect == EffectType::kCompressor) {
+          settings->compressor_controls.level_db = *live_state->effect_level_db;
+        } else if (*live_state->effect == EffectType::kKlon) {
+          settings->klon_controls.level_db = *live_state->effect_level_db;
+        } else if (*live_state->effect == EffectType::kTubeScreamer) {
+          settings->tubescreamer_controls.level_db = *live_state->effect_level_db;
+        } else if (*live_state->effect == EffectType::kRat) {
+          settings->rat_controls.level_db = *live_state->effect_level_db;
+        } else if (*live_state->effect == EffectType::kChorus) {
+          settings->chorus_controls.level_db = *live_state->effect_level_db;
+        } else if (*live_state->effect == EffectType::kPlate) {
+          settings->plate_controls.level_db = *live_state->effect_level_db;
+        }
+      }
     }
     if (live_state->effect_clean_blend) {
-      settings->chorus_controls.mix = *live_state->effect_clean_blend;
-      settings->compressor_controls.blend = *live_state->effect_clean_blend;
-      settings->klon_controls.clean_blend = *live_state->effect_clean_blend;
-      settings->plate_controls.decay = *live_state->effect_clean_blend;
+      if (live_state->effect && !HasExplicitEffectChain(*live_state)) {
+        if (*live_state->effect == EffectType::kCompressor) {
+          settings->compressor_controls.blend = *live_state->effect_clean_blend;
+        } else if (*live_state->effect == EffectType::kKlon) {
+          settings->klon_controls.clean_blend = *live_state->effect_clean_blend;
+        } else if (*live_state->effect == EffectType::kChorus) {
+          settings->chorus_controls.mix = *live_state->effect_clean_blend;
+        } else if (*live_state->effect == EffectType::kPlate) {
+          settings->plate_controls.decay = *live_state->effect_clean_blend;
+        }
+      }
     }
+    if (live_state->compressor_sustain) settings->compressor_controls.sustain = *live_state->compressor_sustain;
+    if (live_state->compressor_attack) settings->compressor_controls.attack = *live_state->compressor_attack;
+    if (live_state->compressor_level_db) settings->compressor_controls.level_db = *live_state->compressor_level_db;
+    if (live_state->compressor_blend) settings->compressor_controls.blend = *live_state->compressor_blend;
+    if (live_state->klon_drive) settings->klon_controls.drive = *live_state->klon_drive;
+    if (live_state->klon_tone) settings->klon_controls.tone = *live_state->klon_tone;
+    if (live_state->klon_level_db) settings->klon_controls.level_db = *live_state->klon_level_db;
+    if (live_state->klon_clean_blend) settings->klon_controls.clean_blend = *live_state->klon_clean_blend;
+    if (live_state->tubescreamer_drive) settings->tubescreamer_controls.drive = *live_state->tubescreamer_drive;
+    if (live_state->tubescreamer_tone) settings->tubescreamer_controls.tone = *live_state->tubescreamer_tone;
+    if (live_state->tubescreamer_level_db) settings->tubescreamer_controls.level_db = *live_state->tubescreamer_level_db;
+    if (live_state->rat_distortion) settings->rat_controls.distortion = *live_state->rat_distortion;
+    if (live_state->rat_filter) settings->rat_controls.filter = *live_state->rat_filter;
+    if (live_state->rat_level_db) settings->rat_controls.level_db = *live_state->rat_level_db;
+    if (live_state->chorus_depth) settings->chorus_controls.depth = *live_state->chorus_depth;
+    if (live_state->chorus_tone) settings->chorus_controls.tone = *live_state->chorus_tone;
+    if (live_state->chorus_level_db) settings->chorus_controls.level_db = *live_state->chorus_level_db;
+    if (live_state->chorus_mix) settings->chorus_controls.mix = *live_state->chorus_mix;
+    if (live_state->plate_mix) settings->plate_controls.mix = *live_state->plate_mix;
+    if (live_state->plate_brightness) settings->plate_controls.brightness = *live_state->plate_brightness;
+    if (live_state->plate_level_db) settings->plate_controls.level_db = *live_state->plate_level_db;
+    if (live_state->plate_decay) settings->plate_controls.decay = *live_state->plate_decay;
   }
 
   return settings;
@@ -1364,7 +1515,27 @@ LiveControlState BuildLiveControlState(const RuntimeSettings& settings) {
   state.amp_name = settings.amp_name;
   state.preamp_name = settings.preamp_name;
   state.power_tube_type = settings.power_tube_type;
-  state.effect = settings.effect;
+  const int enabled_count =
+      static_cast<int>(settings.compression_enabled) +
+      static_cast<int>(settings.klon_enabled) +
+      static_cast<int>(settings.tubescreamer_enabled) +
+      static_cast<int>(settings.rat_enabled) +
+      static_cast<int>(settings.chorus_enabled) +
+      static_cast<int>(settings.plate_enabled);
+  if (enabled_count == 1) {
+    if (settings.compression_enabled) state.effect = EffectType::kCompressor;
+    if (settings.klon_enabled) state.effect = EffectType::kKlon;
+    if (settings.tubescreamer_enabled) state.effect = EffectType::kTubeScreamer;
+    if (settings.rat_enabled) state.effect = EffectType::kRat;
+    if (settings.chorus_enabled) state.effect = EffectType::kChorus;
+    if (settings.plate_enabled) state.effect = EffectType::kPlate;
+  }
+  state.effect_compression_enabled = settings.compression_enabled;
+  state.effect_klon_enabled = settings.klon_enabled;
+  state.effect_tubescreamer_enabled = settings.tubescreamer_enabled;
+  state.effect_rat_enabled = settings.rat_enabled;
+  state.effect_chorus_enabled = settings.chorus_enabled;
+  state.effect_plate_enabled = settings.plate_enabled;
   state.drive_db = settings.stage_controls.drive_db;
   state.level_db = settings.stage_controls.level_db;
   state.bright_db = settings.stage_controls.bright_db;
@@ -1378,10 +1549,59 @@ LiveControlState BuildLiveControlState(const RuntimeSettings& settings) {
     state.power_level_db = settings.power_controls.level_db;
     state.power_bias_trim = settings.power_controls.bias_trim;
   }
-  state.effect_drive = settings.klon_controls.drive;
-  state.effect_tone = settings.klon_controls.tone;
-  state.effect_level_db = settings.klon_controls.level_db;
-  state.effect_clean_blend = settings.klon_controls.clean_blend;
+  if (enabled_count == 1 && state.effect) {
+    if (*state.effect == EffectType::kCompressor) {
+      state.effect_drive = settings.compressor_controls.sustain;
+      state.effect_tone = settings.compressor_controls.attack;
+      state.effect_level_db = settings.compressor_controls.level_db;
+      state.effect_clean_blend = settings.compressor_controls.blend;
+    } else if (*state.effect == EffectType::kKlon) {
+      state.effect_drive = settings.klon_controls.drive;
+      state.effect_tone = settings.klon_controls.tone;
+      state.effect_level_db = settings.klon_controls.level_db;
+      state.effect_clean_blend = settings.klon_controls.clean_blend;
+    } else if (*state.effect == EffectType::kTubeScreamer) {
+      state.effect_drive = settings.tubescreamer_controls.drive;
+      state.effect_tone = settings.tubescreamer_controls.tone;
+      state.effect_level_db = settings.tubescreamer_controls.level_db;
+    } else if (*state.effect == EffectType::kRat) {
+      state.effect_drive = settings.rat_controls.distortion;
+      state.effect_tone = settings.rat_controls.filter;
+      state.effect_level_db = settings.rat_controls.level_db;
+    } else if (*state.effect == EffectType::kChorus) {
+      state.effect_drive = settings.chorus_controls.depth;
+      state.effect_tone = settings.chorus_controls.tone;
+      state.effect_level_db = settings.chorus_controls.level_db;
+      state.effect_clean_blend = settings.chorus_controls.mix;
+    } else if (*state.effect == EffectType::kPlate) {
+      state.effect_drive = settings.plate_controls.mix;
+      state.effect_tone = settings.plate_controls.brightness;
+      state.effect_level_db = settings.plate_controls.level_db;
+      state.effect_clean_blend = settings.plate_controls.decay;
+    }
+  }
+  state.compressor_sustain = settings.compressor_controls.sustain;
+  state.compressor_attack = settings.compressor_controls.attack;
+  state.compressor_level_db = settings.compressor_controls.level_db;
+  state.compressor_blend = settings.compressor_controls.blend;
+  state.klon_drive = settings.klon_controls.drive;
+  state.klon_tone = settings.klon_controls.tone;
+  state.klon_level_db = settings.klon_controls.level_db;
+  state.klon_clean_blend = settings.klon_controls.clean_blend;
+  state.tubescreamer_drive = settings.tubescreamer_controls.drive;
+  state.tubescreamer_tone = settings.tubescreamer_controls.tone;
+  state.tubescreamer_level_db = settings.tubescreamer_controls.level_db;
+  state.rat_distortion = settings.rat_controls.distortion;
+  state.rat_filter = settings.rat_controls.filter;
+  state.rat_level_db = settings.rat_controls.level_db;
+  state.chorus_depth = settings.chorus_controls.depth;
+  state.chorus_tone = settings.chorus_controls.tone;
+  state.chorus_level_db = settings.chorus_controls.level_db;
+  state.chorus_mix = settings.chorus_controls.mix;
+  state.plate_mix = settings.plate_controls.mix;
+  state.plate_brightness = settings.plate_controls.brightness;
+  state.plate_level_db = settings.plate_controls.level_db;
+  state.plate_decay = settings.plate_controls.decay;
   return state;
 }
 
@@ -1410,14 +1630,15 @@ int AudioCallback(const void* input_buffer,
       state->applied_amp_name = settings->amp_name;
       state->applied_preamp_name = settings->preamp_name;
     }
-    if (state->applied_effect != settings->effect) {
+    const std::string effect_signature = EffectChainSummary(*settings);
+    if (state->applied_effect_signature != effect_signature) {
       state->effect.Reset();
       state->tubescreamer.Reset();
       state->rat.Reset();
       state->chorus.Reset();
       state->compressor.Reset();
       state->plate.Reset();
-      state->applied_effect = settings->effect;
+      state->applied_effect_signature = effect_signature;
     }
     if (state->applied_power_stage_enabled != settings->has_power_stage ||
         state->applied_power_tube_type != settings->power_tube_type) {
@@ -1446,13 +1667,16 @@ int AudioCallback(const void* input_buffer,
       s = static_cast<float>(in[i * kInputChannels] / 32768.0f);
     }
 
-    if (settings && settings->effect == EffectType::kCompressor) {
+    if (settings && settings->compression_enabled) {
       s = state->compressor.Process(s);
-    } else if (settings && settings->effect == EffectType::kKlon) {
+    }
+    if (settings && settings->klon_enabled) {
       s = state->effect.Process(s);
-    } else if (settings && settings->effect == EffectType::kTubeScreamer) {
+    }
+    if (settings && settings->tubescreamer_enabled) {
       s = state->tubescreamer.Process(s);
-    } else if (settings && settings->effect == EffectType::kRat) {
+    }
+    if (settings && settings->rat_enabled) {
       s = state->rat.Process(s);
     }
 
@@ -1460,9 +1684,10 @@ int AudioCallback(const void* input_buffer,
     if (settings && settings->has_power_stage) {
       s = state->power_stage.Process(s);
     }
-    if (settings && settings->effect == EffectType::kChorus) {
+    if (settings && settings->chorus_enabled) {
       s = state->chorus.Process(s);
-    } else if (settings && settings->effect == EffectType::kPlate) {
+    }
+    if (settings && settings->plate_enabled) {
       s = state->plate.Process(s);
     }
 
@@ -1501,6 +1726,7 @@ int main(int argc, char** argv) {
         ParseStringArg(arg, "--preamp-file", i, argc, argv, config.preamp_file) ||
         ParseStringArg(arg, "--preset", i, argc, argv, config.preset) ||
         ParseStringArg(arg, "--effect", i, argc, argv, config.effect) ||
+        ParseStringArg(arg, "--effects", i, argc, argv, config.effects) ||
         ParseStringArg(arg, "--device", i, argc, argv, config.device_name) ||
         ParseStringArg(arg, "--input-device", i, argc, argv, config.input_device_name) ||
         ParseStringArg(arg, "--output-device", i, argc, argv, config.output_device_name) ||
@@ -1552,6 +1778,12 @@ int main(int argc, char** argv) {
   if (config.effect != "none" && !IsEffectEnabled(config.effect)) {
     std::cerr << "Unknown effect: " << config.effect << "\n";
     return 1;
+  }
+  for (const std::string& effect_name : SplitCommaList(config.effects)) {
+    if (!IsEffectEnabled(effect_name)) {
+      std::cerr << "Unknown effect in --effects: " << effect_name << "\n";
+      return 1;
+    }
   }
 
   if (config.http_port < 0 || config.http_port > 65535) {
@@ -1797,7 +2029,7 @@ int main(int argc, char** argv) {
             << (settings->has_power_stage
                     ? std::string(", power=") + PowerTubeTypeName(settings->power_tube_type)
                     : std::string())
-            << ", effect=" << EffectTypeName(settings->effect)
+            << ", effects=" << EffectChainSummary(*settings)
             << ". Press Ctrl+C to quit.\n";
   if (http_server) {
     std::cout << "Serving UI on http://" << config.http_host << ":"

@@ -67,6 +67,43 @@ h1, h2, p { margin: 0 0 10px; }
   margin: 12px 0;
 }
 
+.effect-chain-panel {
+  margin-top: 18px;
+}
+
+.effect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+}
+
+.effect-block {
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid rgba(33, 22, 14, .22);
+  background: rgba(255, 247, 234, .55);
+}
+
+.effect-block label {
+  margin: 10px 0;
+}
+
+.effect-toggle {
+  grid-template-columns: 1fr auto;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.effect-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+}
+
+.effect-block-disabled {
+  opacity: 0.6;
+}
+
 input[type="range"], select {
   width: 100%;
 }

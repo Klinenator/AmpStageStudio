@@ -71,6 +71,12 @@ struct LiveControlState {
   std::optional<std::string> output_device_name;
   std::optional<PowerTubeType> power_tube_type;
   std::optional<EffectType> effect;
+  std::optional<bool> effect_compression_enabled;
+  std::optional<bool> effect_klon_enabled;
+  std::optional<bool> effect_tubescreamer_enabled;
+  std::optional<bool> effect_rat_enabled;
+  std::optional<bool> effect_chorus_enabled;
+  std::optional<bool> effect_plate_enabled;
   std::optional<double> drive_db;
   std::optional<double> level_db;
   std::optional<double> bright_db;
@@ -86,6 +92,28 @@ struct LiveControlState {
   std::optional<double> effect_tone;
   std::optional<double> effect_level_db;
   std::optional<double> effect_clean_blend;
+  std::optional<double> compressor_sustain;
+  std::optional<double> compressor_attack;
+  std::optional<double> compressor_level_db;
+  std::optional<double> compressor_blend;
+  std::optional<double> klon_drive;
+  std::optional<double> klon_tone;
+  std::optional<double> klon_level_db;
+  std::optional<double> klon_clean_blend;
+  std::optional<double> tubescreamer_drive;
+  std::optional<double> tubescreamer_tone;
+  std::optional<double> tubescreamer_level_db;
+  std::optional<double> rat_distortion;
+  std::optional<double> rat_filter;
+  std::optional<double> rat_level_db;
+  std::optional<double> chorus_depth;
+  std::optional<double> chorus_tone;
+  std::optional<double> chorus_level_db;
+  std::optional<double> chorus_mix;
+  std::optional<double> plate_mix;
+  std::optional<double> plate_brightness;
+  std::optional<double> plate_level_db;
+  std::optional<double> plate_decay;
 };
 
 inline bool ParseLiveControlDouble(const std::string& value, double& out) {
@@ -96,6 +124,18 @@ inline bool ParseLiveControlDouble(const std::string& value, double& out) {
   } catch (const std::exception&) {
     return false;
   }
+}
+
+inline bool ParseLiveControlBool(const std::string& value, bool& out) {
+  if (value == "1" || value == "true" || value == "on" || value == "yes") {
+    out = true;
+    return true;
+  }
+  if (value == "0" || value == "false" || value == "off" || value == "no") {
+    out = false;
+    return true;
+  }
+  return false;
 }
 
 inline std::string TrimLiveControlString(std::string value) {
@@ -189,6 +229,56 @@ inline bool LoadLiveControlState(const std::string& path,
       continue;
     }
 
+    bool parsed_bool = false;
+    if (key == "effect_compression_enabled") {
+      if (!ParseLiveControlBool(value, parsed_bool)) {
+        if (error_out) *error_out = "Invalid boolean value for " + key;
+        return false;
+      }
+      parsed.effect_compression_enabled = parsed_bool;
+      continue;
+    }
+    if (key == "effect_klon_enabled") {
+      if (!ParseLiveControlBool(value, parsed_bool)) {
+        if (error_out) *error_out = "Invalid boolean value for " + key;
+        return false;
+      }
+      parsed.effect_klon_enabled = parsed_bool;
+      continue;
+    }
+    if (key == "effect_tubescreamer_enabled") {
+      if (!ParseLiveControlBool(value, parsed_bool)) {
+        if (error_out) *error_out = "Invalid boolean value for " + key;
+        return false;
+      }
+      parsed.effect_tubescreamer_enabled = parsed_bool;
+      continue;
+    }
+    if (key == "effect_rat_enabled") {
+      if (!ParseLiveControlBool(value, parsed_bool)) {
+        if (error_out) *error_out = "Invalid boolean value for " + key;
+        return false;
+      }
+      parsed.effect_rat_enabled = parsed_bool;
+      continue;
+    }
+    if (key == "effect_chorus_enabled") {
+      if (!ParseLiveControlBool(value, parsed_bool)) {
+        if (error_out) *error_out = "Invalid boolean value for " + key;
+        return false;
+      }
+      parsed.effect_chorus_enabled = parsed_bool;
+      continue;
+    }
+    if (key == "effect_plate_enabled") {
+      if (!ParseLiveControlBool(value, parsed_bool)) {
+        if (error_out) *error_out = "Invalid boolean value for " + key;
+        return false;
+      }
+      parsed.effect_plate_enabled = parsed_bool;
+      continue;
+    }
+
     double parsed_double = 0.0;
     if (!ParseLiveControlDouble(value, parsed_double)) {
       if (error_out) {
@@ -227,6 +317,50 @@ inline bool LoadLiveControlState(const std::string& path,
       parsed.effect_level_db = parsed_double;
     } else if (key == "effect_clean_blend") {
       parsed.effect_clean_blend = parsed_double;
+    } else if (key == "compressor_sustain") {
+      parsed.compressor_sustain = parsed_double;
+    } else if (key == "compressor_attack") {
+      parsed.compressor_attack = parsed_double;
+    } else if (key == "compressor_level_db") {
+      parsed.compressor_level_db = parsed_double;
+    } else if (key == "compressor_blend") {
+      parsed.compressor_blend = parsed_double;
+    } else if (key == "klon_drive") {
+      parsed.klon_drive = parsed_double;
+    } else if (key == "klon_tone") {
+      parsed.klon_tone = parsed_double;
+    } else if (key == "klon_level_db") {
+      parsed.klon_level_db = parsed_double;
+    } else if (key == "klon_clean_blend") {
+      parsed.klon_clean_blend = parsed_double;
+    } else if (key == "tubescreamer_drive") {
+      parsed.tubescreamer_drive = parsed_double;
+    } else if (key == "tubescreamer_tone") {
+      parsed.tubescreamer_tone = parsed_double;
+    } else if (key == "tubescreamer_level_db") {
+      parsed.tubescreamer_level_db = parsed_double;
+    } else if (key == "rat_distortion") {
+      parsed.rat_distortion = parsed_double;
+    } else if (key == "rat_filter") {
+      parsed.rat_filter = parsed_double;
+    } else if (key == "rat_level_db") {
+      parsed.rat_level_db = parsed_double;
+    } else if (key == "chorus_depth") {
+      parsed.chorus_depth = parsed_double;
+    } else if (key == "chorus_tone") {
+      parsed.chorus_tone = parsed_double;
+    } else if (key == "chorus_level_db") {
+      parsed.chorus_level_db = parsed_double;
+    } else if (key == "chorus_mix") {
+      parsed.chorus_mix = parsed_double;
+    } else if (key == "plate_mix") {
+      parsed.plate_mix = parsed_double;
+    } else if (key == "plate_brightness") {
+      parsed.plate_brightness = parsed_double;
+    } else if (key == "plate_level_db") {
+      parsed.plate_level_db = parsed_double;
+    } else if (key == "plate_decay") {
+      parsed.plate_decay = parsed_double;
     } else {
       if (error_out) {
         *error_out = "Unknown control key " + key;
@@ -274,6 +408,30 @@ inline bool SaveLiveControlState(const std::string& path,
   if (state.effect) {
     out << "effect = " << EffectTypeName(*state.effect) << "\n";
   }
+  if (state.effect_compression_enabled) {
+    out << "effect_compression_enabled = "
+        << (*state.effect_compression_enabled ? "1" : "0") << "\n";
+  }
+  if (state.effect_klon_enabled) {
+    out << "effect_klon_enabled = "
+        << (*state.effect_klon_enabled ? "1" : "0") << "\n";
+  }
+  if (state.effect_tubescreamer_enabled) {
+    out << "effect_tubescreamer_enabled = "
+        << (*state.effect_tubescreamer_enabled ? "1" : "0") << "\n";
+  }
+  if (state.effect_rat_enabled) {
+    out << "effect_rat_enabled = "
+        << (*state.effect_rat_enabled ? "1" : "0") << "\n";
+  }
+  if (state.effect_chorus_enabled) {
+    out << "effect_chorus_enabled = "
+        << (*state.effect_chorus_enabled ? "1" : "0") << "\n";
+  }
+  if (state.effect_plate_enabled) {
+    out << "effect_plate_enabled = "
+        << (*state.effect_plate_enabled ? "1" : "0") << "\n";
+  }
   if (state.drive_db) out << "drive_db = " << *state.drive_db << "\n";
   if (state.level_db) out << "level_db = " << *state.level_db << "\n";
   if (state.bright_db) out << "bright_db = " << *state.bright_db << "\n";
@@ -291,5 +449,27 @@ inline bool SaveLiveControlState(const std::string& path,
   if (state.effect_clean_blend) {
     out << "effect_clean_blend = " << *state.effect_clean_blend << "\n";
   }
+  if (state.compressor_sustain) out << "compressor_sustain = " << *state.compressor_sustain << "\n";
+  if (state.compressor_attack) out << "compressor_attack = " << *state.compressor_attack << "\n";
+  if (state.compressor_level_db) out << "compressor_level_db = " << *state.compressor_level_db << "\n";
+  if (state.compressor_blend) out << "compressor_blend = " << *state.compressor_blend << "\n";
+  if (state.klon_drive) out << "klon_drive = " << *state.klon_drive << "\n";
+  if (state.klon_tone) out << "klon_tone = " << *state.klon_tone << "\n";
+  if (state.klon_level_db) out << "klon_level_db = " << *state.klon_level_db << "\n";
+  if (state.klon_clean_blend) out << "klon_clean_blend = " << *state.klon_clean_blend << "\n";
+  if (state.tubescreamer_drive) out << "tubescreamer_drive = " << *state.tubescreamer_drive << "\n";
+  if (state.tubescreamer_tone) out << "tubescreamer_tone = " << *state.tubescreamer_tone << "\n";
+  if (state.tubescreamer_level_db) out << "tubescreamer_level_db = " << *state.tubescreamer_level_db << "\n";
+  if (state.rat_distortion) out << "rat_distortion = " << *state.rat_distortion << "\n";
+  if (state.rat_filter) out << "rat_filter = " << *state.rat_filter << "\n";
+  if (state.rat_level_db) out << "rat_level_db = " << *state.rat_level_db << "\n";
+  if (state.chorus_depth) out << "chorus_depth = " << *state.chorus_depth << "\n";
+  if (state.chorus_tone) out << "chorus_tone = " << *state.chorus_tone << "\n";
+  if (state.chorus_level_db) out << "chorus_level_db = " << *state.chorus_level_db << "\n";
+  if (state.chorus_mix) out << "chorus_mix = " << *state.chorus_mix << "\n";
+  if (state.plate_mix) out << "plate_mix = " << *state.plate_mix << "\n";
+  if (state.plate_brightness) out << "plate_brightness = " << *state.plate_brightness << "\n";
+  if (state.plate_level_db) out << "plate_level_db = " << *state.plate_level_db << "\n";
+  if (state.plate_decay) out << "plate_decay = " << *state.plate_decay << "\n";
   return static_cast<bool>(out);
 }

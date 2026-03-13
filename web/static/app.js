@@ -1,8 +1,7 @@
-const stateKeys = [
+const valueKeys = [
   "amp",
   "preamp",
   "power_tube_type",
-  "effect",
   "drive_db",
   "level_db",
   "bright_db",
@@ -14,11 +13,49 @@ const stateKeys = [
   "power_drive_db",
   "power_level_db",
   "power_bias_trim",
-  "effect_drive",
-  "effect_tone",
-  "effect_level_db",
-  "effect_clean_blend",
+  "compressor_sustain",
+  "compressor_attack",
+  "compressor_level_db",
+  "compressor_blend",
+  "klon_drive",
+  "klon_tone",
+  "klon_level_db",
+  "klon_clean_blend",
+  "tubescreamer_drive",
+  "tubescreamer_tone",
+  "tubescreamer_level_db",
+  "rat_distortion",
+  "rat_filter",
+  "rat_level_db",
+  "chorus_depth",
+  "chorus_tone",
+  "chorus_level_db",
+  "chorus_mix",
+  "plate_mix",
+  "plate_brightness",
+  "plate_level_db",
+  "plate_decay",
 ];
+
+const checkboxKeys = [
+  "effect_compression_enabled",
+  "effect_klon_enabled",
+  "effect_tubescreamer_enabled",
+  "effect_rat_enabled",
+  "effect_chorus_enabled",
+  "effect_plate_enabled",
+];
+
+const stateKeys = [...valueKeys, ...checkboxKeys];
+
+const effectBlockIds = {
+  effect_compression_enabled: "effect_compression_block",
+  effect_klon_enabled: "effect_klon_block",
+  effect_tubescreamer_enabled: "effect_tubescreamer_block",
+  effect_rat_enabled: "effect_rat_block",
+  effect_chorus_enabled: "effect_chorus_block",
+  effect_plate_enabled: "effect_plate_block",
+};
 
 let saveTimer = null;
 let audioBackend = "portaudio";
@@ -747,71 +784,75 @@ function drawTonePlot() {
   svg.innerHTML = markup;
 }
 
-function refreshEffectSchema() {
-  const effect = $("effect")?.value || "none";
-  const config = {
-    none: {
-      drive: "Drive",
-      tone: "Tone",
-      level: "Level",
-      cleanBlend: "Clean Blend",
-      showCleanBlend: false,
-    },
-    klon: {
-      drive: "Drive",
-      tone: "Tone",
-      level: "Level",
-      cleanBlend: "Clean Blend",
-      showCleanBlend: true,
-    },
-    tubescreamer: {
-      drive: "Drive",
-      tone: "Tone",
-      level: "Level",
-      cleanBlend: "Clean Blend",
-      showCleanBlend: false,
-    },
-    rat: {
-      drive: "Distortion",
-      tone: "Filter",
-      level: "Volume",
-      cleanBlend: "Clean Blend",
-      showCleanBlend: false,
-    },
-    chorus: {
-      drive: "Depth",
-      tone: "Tone",
-      level: "Level",
-      cleanBlend: "Mix",
-      showCleanBlend: true,
-    },
-    compression: {
-      drive: "Sustain",
-      tone: "Attack",
-      level: "Level",
-      cleanBlend: "Blend",
-      showCleanBlend: true,
-    },
-    plate: {
-      drive: "Mix",
-      tone: "Brightness",
-      level: "Level",
-      cleanBlend: "Decay",
-      showCleanBlend: true,
-    },
-  }[effect] || {
-    drive: "Drive",
-    tone: "Tone",
-    level: "Level",
-    cleanBlend: "Clean Blend",
-    showCleanBlend: true,
-  };
+function parseBoolish(value) {
+  return value === true || value === "1" || value === "true" || value === "on";
+}
 
-  $("effect_drive_label").textContent = config.drive;
-  $("effect_tone_label").textContent = config.tone;
-  $("effect_level_label").textContent = config.level;
-  $("effect_clean_blend_label").textContent = config.cleanBlend;
-  $("effect_clean_blend_row").hidden = !config.showCleanBlend;
+function hydrateLegacyEffectState(data) {
+  const hydrated = {...data};
+  const hasExplicitChain = checkboxKeys.some((key) => hydrated[key] !== undefined);
+  if (hasExplicitChain) {
+    return hydrated;
+  }
+
+  const legacyEffect = hydrated.effect || "none";
+  const enableMap = {
+    compression: "effect_compression_enabled",
+    klon: "effect_klon_enabled",
+    tubescreamer: "effect_tubescreamer_enabled",
+    rat: "effect_rat_enabled",
+    chorus: "effect_chorus_enabled",
+    plate: "effect_plate_enabled",
+  };
+  const enabledKey = enableMap[legacyEffect];
+  if (enabledKey) {
+    hydrated[enabledKey] = "1";
+  }
+
+  if (hydrated.effect_drive !== undefined) {
+    if (legacyEffect === "compression") hydrated.compressor_sustain = hydrated.effect_drive;
+    if (legacyEffect === "klon") hydrated.klon_drive = hydrated.effect_drive;
+    if (legacyEffect === "tubescreamer") hydrated.tubescreamer_drive = hydrated.effect_drive;
+    if (legacyEffect === "rat") hydrated.rat_distortion = hydrated.effect_drive;
+    if (legacyEffect === "chorus") hydrated.chorus_depth = hydrated.effect_drive;
+    if (legacyEffect === "plate") hydrated.plate_mix = hydrated.effect_drive;
+  }
+  if (hydrated.effect_tone !== undefined) {
+    if (legacyEffect === "compression") hydrated.compressor_attack = hydrated.effect_tone;
+    if (legacyEffect === "klon") hydrated.klon_tone = hydrated.effect_tone;
+    if (legacyEffect === "tubescreamer") hydrated.tubescreamer_tone = hydrated.effect_tone;
+    if (legacyEffect === "rat") hydrated.rat_filter = hydrated.effect_tone;
+    if (legacyEffect === "chorus") hydrated.chorus_tone = hydrated.effect_tone;
+    if (legacyEffect === "plate") hydrated.plate_brightness = hydrated.effect_tone;
+  }
+  if (hydrated.effect_level_db !== undefined) {
+    if (legacyEffect === "compression") hydrated.compressor_level_db = hydrated.effect_level_db;
+    if (legacyEffect === "klon") hydrated.klon_level_db = hydrated.effect_level_db;
+    if (legacyEffect === "tubescreamer") hydrated.tubescreamer_level_db = hydrated.effect_level_db;
+    if (legacyEffect === "rat") hydrated.rat_level_db = hydrated.effect_level_db;
+    if (legacyEffect === "chorus") hydrated.chorus_level_db = hydrated.effect_level_db;
+    if (legacyEffect === "plate") hydrated.plate_level_db = hydrated.effect_level_db;
+  }
+  if (hydrated.effect_clean_blend !== undefined) {
+    if (legacyEffect === "compression") hydrated.compressor_blend = hydrated.effect_clean_blend;
+    if (legacyEffect === "klon") hydrated.klon_clean_blend = hydrated.effect_clean_blend;
+    if (legacyEffect === "chorus") hydrated.chorus_mix = hydrated.effect_clean_blend;
+    if (legacyEffect === "plate") hydrated.plate_decay = hydrated.effect_clean_blend;
+  }
+  return hydrated;
+}
+
+function refreshEffectBlocks() {
+  for (const [toggleId, blockId] of Object.entries(effectBlockIds)) {
+    const enabled = parseBoolish($(toggleId)?.checked ? "1" : "0");
+    const block = $(blockId);
+    if (!block) continue;
+    block.classList.toggle("effect-block-disabled", !enabled);
+    const controls = block.querySelectorAll("input[type='range']");
+    for (const control of controls) {
+      control.disabled = !enabled;
+    }
+  }
 }
 
 async function fetchJson(url, options) {
@@ -857,10 +898,15 @@ async function refreshControlSchema() {
 
 function readStateFromInputs() {
   const payload = {};
-  for (const key of stateKeys) {
+  for (const key of valueKeys) {
     const el = $(key);
     if (!el) continue;
     payload[key] = el.value;
+  }
+  for (const key of checkboxKeys) {
+    const el = $(key);
+    if (!el) continue;
+    payload[key] = el.checked ? "1" : "0";
   }
   const inputSelect = $("input_device_select");
   const outputSelect = $("output_device_select");
@@ -879,24 +925,30 @@ function readStateFromInputs() {
 }
 
 function applyState(data) {
-  for (const key of stateKeys) {
+  const hydrated = hydrateLegacyEffectState(data);
+  for (const key of valueKeys) {
     const el = $(key);
-    if (!el || data[key] === undefined) continue;
-    el.value = data[key];
-    syncOutput(key, data[key]);
+    if (!el || hydrated[key] === undefined) continue;
+    el.value = hydrated[key];
+    syncOutput(key, hydrated[key]);
+  }
+  for (const key of checkboxKeys) {
+    const el = $(key);
+    if (!el || hydrated[key] === undefined) continue;
+    el.checked = parseBoolish(hydrated[key]);
   }
   const inputSelect = $("input_device_select");
   const outputSelect = $("output_device_select");
   if (audioBackend === "alsa") {
-    if (inputSelect && data.alsa_input !== undefined) inputSelect.value = data.alsa_input;
-    if (outputSelect && data.alsa_output !== undefined) outputSelect.value = data.alsa_output;
+    if (inputSelect && hydrated.alsa_input !== undefined) inputSelect.value = hydrated.alsa_input;
+    if (outputSelect && hydrated.alsa_output !== undefined) outputSelect.value = hydrated.alsa_output;
   } else {
-    if (inputSelect && data.input_device !== undefined) inputSelect.value = data.input_device;
-    if (outputSelect && data.output_device !== undefined) outputSelect.value = data.output_device;
+    if (inputSelect && hydrated.input_device !== undefined) inputSelect.value = hydrated.input_device;
+    if (outputSelect && hydrated.output_device !== undefined) outputSelect.value = hydrated.output_device;
   }
-  refreshEffectSchema();
+  refreshEffectBlocks();
   drawTonePlot();
-  $("status").textContent = `Connected to ${data._control_file || "control file"}`;
+  $("status").textContent = `Connected to ${hydrated._control_file || "control file"}`;
 }
 
 async function saveState() {
@@ -986,21 +1038,27 @@ async function init() {
 
     applyState(stateData);
     await refreshControlSchema();
-    refreshEffectSchema();
+    refreshEffectBlocks();
     drawTonePlot();
     for (const key of stateKeys) {
       const el = $(key);
       if (!el) continue;
       el.addEventListener("input", () => {
-        syncOutput(key, el.value);
-        if (key === "effect") refreshEffectSchema();
+        if (valueKeys.includes(key)) {
+          syncOutput(key, el.value);
+        }
+        if (checkboxKeys.includes(key)) {
+          refreshEffectBlocks();
+        }
         if (["bass", "mid", "treble", "presence", "amp", "preamp"].includes(key)) {
           drawTonePlot();
         }
         scheduleSave();
       });
       el.addEventListener("change", () => {
-        if (key === "effect") refreshEffectSchema();
+        if (checkboxKeys.includes(key)) {
+          refreshEffectBlocks();
+        }
         if (["bass", "mid", "treble", "presence", "amp", "preamp"].includes(key)) {
           drawTonePlot();
         }
