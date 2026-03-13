@@ -64,9 +64,61 @@ const laneDefaults = {
   post_effect_lane: defaultPostChain,
 };
 
+const effectDefinitions = {
+  compression: {
+    title: "Compression",
+    note: "Front-end dynamics control that evens out attack before the amp.",
+    summary: [
+      ["Sustain", "compressor_sustain", "unit"],
+      ["Blend", "compressor_blend", "unit"],
+    ],
+  },
+  klon: {
+    title: "Klon",
+    note: "Transparent mid-forward overdrive that pushes the preamp without losing too much pick detail.",
+    summary: [
+      ["Drive", "klon_drive", "unit"],
+      ["Tone", "klon_tone", "unit"],
+    ],
+  },
+  tubescreamer: {
+    title: "Tube Screamer",
+    note: "Tight low-cut overdrive that focuses mids before the amp input.",
+    summary: [
+      ["Drive", "tubescreamer_drive", "unit"],
+      ["Tone", "tubescreamer_tone", "unit"],
+    ],
+  },
+  rat: {
+    title: "RAT",
+    note: "Harder silicon distortion with a post-clipping filter for edgy gain textures.",
+    summary: [
+      ["Dist", "rat_distortion", "unit"],
+      ["Filter", "rat_filter", "unit"],
+    ],
+  },
+  chorus: {
+    title: "Chorus",
+    note: "Post-amp modulation for width and shimmer without smearing the front-end gain.",
+    summary: [
+      ["Depth", "chorus_depth", "unit"],
+      ["Mix", "chorus_mix", "unit"],
+    ],
+  },
+  plate: {
+    title: "Plate",
+    note: "Post-amp plate ambience with controllable brightness and decay.",
+    summary: [
+      ["Mix", "plate_mix", "unit"],
+      ["Decay", "plate_decay", "unit"],
+    ],
+  },
+};
+
 let saveTimer = null;
 let audioBackend = "portaudio";
 let draggingBlock = null;
+let selectedEffect = "compression";
 let currentControlSchema = {
   input_hpf_hz: 60.0,
 };
@@ -928,11 +980,91 @@ function refreshEffectBoardOrder() {
   }
 }
 
+function formatEffectValue(kind, value) {
+  const number = Number(value ?? 0);
+  if (kind === "db") {
+    return `${number.toFixed(1)} dB`;
+  }
+  return number.toFixed(2);
+}
+
+function ensureSelectedEffect() {
+  if ($( `effect_${selectedEffect}_block`)) {
+    return;
+  }
+  const firstEnabled = Object.keys(effectDefinitions).find((effectName) =>
+    parseBoolish($( `effect_${effectName}_enabled`)?.checked ? "1" : "0"));
+  selectedEffect = firstEnabled || Object.keys(effectDefinitions)[0];
+}
+
+function refreshEffectInspector() {
+  ensureSelectedEffect();
+  const definition = effectDefinitions[selectedEffect];
+  $("effect_inspector_title").textContent = definition?.title || "Effect";
+  $("effect_inspector_note").textContent = definition?.note ||
+    "Select a pedal tile to tweak its controls.";
+  for (const effectName of Object.keys(effectDefinitions)) {
+    const section = $(`inspector_${effectName}`);
+    if (!section) continue;
+    section.hidden = effectName !== selectedEffect;
+  }
+}
+
+function refreshEffectTileSummaries() {
+  for (const [effectName, definition] of Object.entries(effectDefinitions)) {
+    const enabled =
+      parseBoolish($( `effect_${effectName}_enabled`)?.checked ? "1" : "0");
+    const state = $(`effect_${effectName}_state`);
+    const meta = $(`effect_${effectName}_meta`);
+    if (state) {
+      state.textContent = enabled ? "Active" : "Bypassed";
+    }
+    if (meta) {
+      meta.textContent = definition.summary
+        .map(([label, key, kind]) => `${label} ${formatEffectValue(kind, $(key)?.value)}`)
+        .join(" · ");
+    }
+    const block = $(`effect_${effectName}_block`);
+    if (block) {
+      block.classList.toggle("effect-block-selected", effectName === selectedEffect);
+    }
+  }
+}
+
+function selectEffect(effectName) {
+  if (!effectDefinitions[effectName]) {
+    return;
+  }
+  selectedEffect = effectName;
+  refreshEffectInspector();
+  refreshEffectTileSummaries();
+}
+
+function setupEffectSelection() {
+  for (const effectName of Object.keys(effectDefinitions)) {
+    const block = $(`effect_${effectName}_block`);
+    if (!block) continue;
+    block.addEventListener("click", (event) => {
+      if (event.target.closest(".drag-handle")) {
+        return;
+      }
+      selectEffect(effectName);
+    });
+    block.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectEffect(effectName);
+      }
+    });
+  }
+}
+
 function setupEffectDragAndDrop() {
   for (const handle of document.querySelectorAll(".drag-handle")) {
     handle.addEventListener("dragstart", (event) => {
       draggingBlock = handle.closest(".effect-block");
       if (!draggingBlock) return;
+      selectEffect(draggingBlock.dataset.effect || "compression");
       draggingBlock.classList.add("effect-block-dragging");
       if (event.dataTransfer) {
         event.dataTransfer.effectAllowed = "move";
@@ -974,11 +1106,9 @@ function refreshEffectBlocks() {
     const block = $(blockId);
     if (!block) continue;
     block.classList.toggle("effect-block-disabled", !enabled);
-    const controls = block.querySelectorAll("input[type='range']");
-    for (const control of controls) {
-      control.disabled = !enabled;
-    }
   }
+  refreshEffectInspector();
+  refreshEffectTileSummaries();
 }
 
 const slowFetchThresholdMs = 400;
@@ -1184,6 +1314,7 @@ async function init() {
       el.addEventListener("input", () => {
         if (valueKeys.includes(key)) {
           syncOutput(key, el.value);
+          refreshEffectTileSummaries();
         }
         if (checkboxKeys.includes(key)) {
           refreshEffectBlocks();
@@ -1194,6 +1325,9 @@ async function init() {
         scheduleSave();
       });
       el.addEventListener("change", () => {
+        if (valueKeys.includes(key)) {
+          refreshEffectTileSummaries();
+        }
         if (checkboxKeys.includes(key)) {
           refreshEffectBlocks();
         }
@@ -1205,6 +1339,7 @@ async function init() {
     }
     $("input_device_select").addEventListener("change", scheduleSave);
     $("output_device_select").addEventListener("change", scheduleSave);
+    setupEffectSelection();
     setupEffectDragAndDrop();
   } catch (error) {
     $("status").textContent = `Failed to load UI: ${error.message}`;

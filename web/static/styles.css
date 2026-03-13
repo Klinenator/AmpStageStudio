@@ -71,10 +71,11 @@ h1, h2, p { margin: 0 0 10px; }
   margin-top: 18px;
 }
 
-.effect-grid {
+.pedalboard-layout {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 18px;
+  align-items: start;
 }
 
 .lane-stack {
@@ -118,24 +119,20 @@ h1, h2, p { margin: 0 0 10px; }
 }
 
 .effect-block {
-  min-width: 272px;
-  flex: 0 0 272px;
-  padding: 14px 16px;
+  min-width: 210px;
+  flex: 0 0 210px;
+  padding: 14px;
   border-radius: 14px;
   border: 1px solid rgba(33, 22, 14, .22);
   background: rgba(255, 247, 234, .55);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
-}
-
-.effect-block label {
-  margin: 10px 0;
+  cursor: pointer;
 }
 
 .effect-toggle {
   grid-template-columns: 1fr auto auto;
   font-weight: 700;
-  margin-top: 0;
-  margin-bottom: 12px;
+  margin: 0 0 10px;
 }
 
 .effect-toggle input[type="checkbox"] {
@@ -167,9 +164,64 @@ h1, h2, p { margin: 0 0 10px; }
   opacity: 0.6;
 }
 
+.effect-block-selected {
+  border-color: rgba(179, 107, 44, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.42),
+    0 0 0 2px rgba(179, 107, 44, 0.24);
+}
+
 .effect-block-dragging {
   opacity: 0.45;
   transform: rotate(-1.2deg);
+}
+
+.effect-state {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: rgba(31, 23, 19, 0.58);
+}
+
+.effect-meta {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  color: rgba(31, 23, 19, 0.84);
+}
+
+.effect-inspector {
+  position: sticky;
+  top: 20px;
+}
+
+.inspector-header {
+  margin-bottom: 14px;
+}
+
+.inspector-header h3 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.inspector-header p {
+  margin: 0;
+  font-size: 14px;
+  color: rgba(31, 23, 19, 0.72);
+}
+
+.inspector-sections {
+  display: grid;
+  gap: 10px;
+}
+
+.inspector-section label {
+  display: grid;
+  grid-template-columns: 92px 1fr 60px;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
 }
 
 input[type="range"], select {
@@ -246,5 +298,13 @@ output {
 @media (max-width: 720px) {
   .tone-plot-header {
     flex-direction: column;
+  }
+
+  .pedalboard-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .effect-inspector {
+    position: static;
   }
 }
