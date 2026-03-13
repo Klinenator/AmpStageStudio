@@ -855,8 +855,15 @@ function refreshEffectBlocks() {
   }
 }
 
-async function fetchJson(url, options) {
+const slowFetchThresholdMs = 400;
+
+async function fetchJson(url, options, label = url) {
+  const start = performance.now();
   const response = await fetch(url, options);
+  const elapsedMs = performance.now() - start;
+  if (elapsedMs >= slowFetchThresholdMs) {
+    console.warn(`[slow fetch] ${label} took ${Math.round(elapsedMs)} ms`);
+  }
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
   return response.json();
 }
@@ -867,7 +874,7 @@ function syncOutput(id, value) {
 }
 
 async function refreshControlSchema() {
-  const schema = await fetchJson("/api/control-schema");
+  const schema = await fetchJson("/api/control-schema", undefined, "control-schema");
   currentControlSchema = {
     ...currentControlSchema,
     ...schema,
@@ -957,7 +964,7 @@ async function saveState() {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify(payload),
-  });
+  }, "save-state");
   applyState(data);
   await refreshControlSchema();
 }
@@ -977,11 +984,11 @@ function scheduleSave() {
 async function init() {
   try {
     const [ampsData, preampsData, powerTubesData, audioDevicesData, stateData] = await Promise.all([
-      fetchJson("/api/amps"),
-      fetchJson("/api/preamps"),
-      fetchJson("/api/power-tubes"),
-      fetchJson("/api/audio-devices"),
-      fetchJson("/api/state"),
+      fetchJson("/api/amps", undefined, "amps"),
+      fetchJson("/api/preamps", undefined, "preamps"),
+      fetchJson("/api/power-tubes", undefined, "power-tubes"),
+      fetchJson("/api/audio-devices", undefined, "audio-devices"),
+      fetchJson("/api/state", undefined, "state"),
     ]);
 
     $("amp").replaceChildren();

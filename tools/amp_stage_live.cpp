@@ -691,6 +691,8 @@ public:
   }
 
 private:
+  static constexpr double kSlowRequestThresholdMs = 150.0;
+
   void Run() {
     while (running_) {
       fd_set readfds;
@@ -723,6 +725,7 @@ private:
       return;
     }
 
+    const auto start_time = std::chrono::steady_clock::now();
     if (request.method == "GET") {
       HandleGet(client_fd, request.path);
     } else if (request.method == "POST") {
@@ -730,6 +733,16 @@ private:
     } else {
       SendResponse(client_fd, 405, "Method Not Allowed",
                    "text/plain; charset=utf-8", "Method Not Allowed");
+    }
+
+    const auto end_time = std::chrono::steady_clock::now();
+    const double elapsed_ms =
+        std::chrono::duration<double, std::milli>(end_time - start_time).count();
+    const bool is_api = request.path.rfind("/api/", 0) == 0;
+    if (is_api || elapsed_ms >= kSlowRequestThresholdMs) {
+      std::cout << (elapsed_ms >= kSlowRequestThresholdMs ? "[http slow] " : "[http] ")
+                << request.method << " " << request.path << " took "
+                << std::lround(elapsed_ms) << " ms\n";
     }
 
     ::close(client_fd);
