@@ -115,25 +115,29 @@ h1, h2, p { margin: 0 0 10px; }
   display: flex;
   gap: 14px;
   overflow-x: auto;
-  padding-bottom: 4px;
+  padding: 2px 2px 8px;
   scrollbar-width: thin;
 }
 
 .effect-block {
   min-width: 188px;
   flex: 0 0 188px;
-  padding: 14px;
+  padding: 12px;
   border-radius: 14px;
   border: 1px solid rgba(33, 22, 14, .22);
-  background: rgba(255, 247, 234, .55);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.35);
+  background:
+    linear-gradient(180deg, rgba(31, 22, 18, .08), rgba(255, 255, 255, .12)),
+    rgba(255, 247, 234, .34);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.24),
+    0 12px 24px rgba(17, 9, 4, .14);
   cursor: pointer;
 }
 
 .effect-toggle {
   grid-template-columns: 1fr auto auto;
   font-weight: 700;
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 
 .effect-toggle input[type="checkbox"] {
@@ -162,19 +166,171 @@ h1, h2, p { margin: 0 0 10px; }
 }
 
 .effect-block-disabled {
-  opacity: 0.6;
+  opacity: 0.7;
 }
 
 .effect-block-selected {
   border-color: rgba(179, 107, 44, 0.62);
   box-shadow:
     inset 0 1px 0 rgba(255,255,255,.42),
-    0 0 0 2px rgba(179, 107, 44, 0.24);
+    0 0 0 2px rgba(179, 107, 44, 0.24),
+    0 14px 28px rgba(43, 23, 10, .22);
+}
+
+.effect-block-active .pedal-led {
+  background: #cf2b24;
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,.2),
+    0 0 12px rgba(246, 73, 54, .8);
 }
 
 .effect-block-dragging {
   opacity: 0.45;
   transform: rotate(-1.2deg);
+}
+
+.effect-pedal {
+  --pedal-face: #b16c39;
+  --pedal-shadow: #69381a;
+  --pedal-highlight: #ebc29d;
+  --pedal-plate: rgba(255, 250, 241, .92);
+  position: relative;
+  min-height: 178px;
+  margin-bottom: 10px;
+  padding: 12px 14px 18px;
+  border-radius: 18px 18px 26px 26px;
+  border: 1px solid rgba(26, 15, 8, .34);
+  background:
+    radial-gradient(circle at 50% 12%, rgba(255,255,255,.48), transparent 26%),
+    linear-gradient(180deg, var(--pedal-highlight), var(--pedal-face) 14%, var(--pedal-shadow));
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.4),
+    inset 0 -10px 20px rgba(0,0,0,.18),
+    0 14px 24px rgba(18, 8, 4, .28);
+}
+
+.effect-pedal::before,
+.effect-pedal::after {
+  content: "";
+  position: absolute;
+  top: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #f6f0e7, #655345 68%, #2a1b12);
+  box-shadow: 0 1px 1px rgba(255,255,255,.28);
+}
+
+.effect-pedal::before {
+  left: 10px;
+}
+
+.effect-pedal::after {
+  right: 10px;
+}
+
+.pedal-port {
+  position: absolute;
+  top: 72px;
+  width: 18px;
+  height: 10px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #22140d, #5f4d42);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+.pedal-port-left {
+  left: -8px;
+}
+
+.pedal-port-right {
+  right: -8px;
+}
+
+.pedal-top {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.pedal-knob {
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  border: 1px solid rgba(20, 16, 13, .45);
+  background:
+    radial-gradient(circle at 35% 30%, #ffffff, #989089 42%, #312822 72%);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.3),
+    0 2px 4px rgba(0,0,0,.18);
+}
+
+.pedal-nameplate {
+  width: fit-content;
+  margin: 0 auto 22px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(44, 26, 16, .34);
+  background: var(--pedal-plate);
+  color: #2c1d15;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.pedal-led {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  background: #852821;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.2);
+}
+
+.pedal-footswitch {
+  display: block;
+  width: 26px;
+  height: 26px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 1px solid rgba(45, 31, 22, .55);
+  background:
+    radial-gradient(circle at 35% 30%, #ffffff, #b9ada4 46%, #4b4039 78%);
+  box-shadow:
+    inset 0 1px 1px rgba(255,255,255,.3),
+    0 3px 5px rgba(0,0,0,.18);
+}
+
+.effect-pedal-drive {
+  --pedal-face: #8c5126;
+  --pedal-shadow: #542912;
+  --pedal-highlight: #dca778;
+}
+
+.effect-pedal-compression {
+  --pedal-face: #c85b4f;
+  --pedal-shadow: #742821;
+  --pedal-highlight: #ef9d93;
+}
+
+.effect-pedal-chorus {
+  --pedal-face: #59b7b9;
+  --pedal-shadow: #25616a;
+  --pedal-highlight: #b4eff1;
+}
+
+.effect-pedal-reverb {
+  --pedal-face: #7ec4d8;
+  --pedal-shadow: #3b7284;
+  --pedal-highlight: #d9f5fd;
+}
+
+.effect-pedal-delay {
+  --pedal-face: #b9b4a5;
+  --pedal-shadow: #71695e;
+  --pedal-highlight: #f1ece0;
 }
 
 .effect-state {
@@ -190,6 +346,7 @@ h1, h2, p { margin: 0 0 10px; }
   font-size: 13px;
   line-height: 1.35;
   color: rgba(31, 23, 19, 0.84);
+  min-height: 36px;
 }
 
 .effect-inspector {

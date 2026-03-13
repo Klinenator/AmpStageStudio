@@ -66,6 +66,7 @@ const laneDefaults = {
 
 const effectDefinitions = {
   compression: {
+    category: "compression",
     title: "Compression",
     note: "Front-end dynamics control that evens out attack before the amp.",
     summary: [
@@ -74,6 +75,7 @@ const effectDefinitions = {
     ],
   },
   klon: {
+    category: "drive",
     title: "Klon",
     note: "Transparent mid-forward overdrive that pushes the preamp without losing too much pick detail.",
     summary: [
@@ -82,6 +84,7 @@ const effectDefinitions = {
     ],
   },
   tubescreamer: {
+    category: "drive",
     title: "Tube Screamer",
     note: "Tight low-cut overdrive that focuses mids before the amp input.",
     summary: [
@@ -90,6 +93,7 @@ const effectDefinitions = {
     ],
   },
   rat: {
+    category: "drive",
     title: "RAT",
     note: "Harder silicon distortion with a post-clipping filter for edgy gain textures.",
     summary: [
@@ -98,6 +102,7 @@ const effectDefinitions = {
     ],
   },
   chorus: {
+    category: "chorus",
     title: "Chorus",
     note: "Post-amp modulation for width and shimmer without smearing the front-end gain.",
     summary: [
@@ -106,6 +111,7 @@ const effectDefinitions = {
     ],
   },
   plate: {
+    category: "reverb",
     title: "Plate",
     note: "Post-amp plate ambience with controllable brightness and decay.",
     summary: [
@@ -1026,6 +1032,8 @@ function refreshEffectTileSummaries() {
     }
     const block = $(`effect_${effectName}_block`);
     if (block) {
+      block.dataset.effectCategory = definition.category || "utility";
+      block.classList.toggle("effect-block-active", enabled);
       block.classList.toggle("effect-block-selected", effectName === selectedEffect);
     }
   }
