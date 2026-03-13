@@ -33,6 +33,7 @@
             <option value="none">none</option>
             <option value="klon">klon</option>
             <option value="tubescreamer">tubescreamer</option>
+            <option value="plate">plate</option>
           </select>
         </label>
         <p>Audio device changes are saved here and take effect the next time the live engine starts.</p>
@@ -76,10 +77,10 @@
 
         <div class="panel">
           <h2>Effect</h2>
-          <label><span>Drive</span><input id="effect_drive" type="range" min="0" max="1" step="0.01"><output id="effect_drive_value"></output></label>
-          <label><span>Tone</span><input id="effect_tone" type="range" min="0" max="1" step="0.01"><output id="effect_tone_value"></output></label>
-          <label><span>Level</span><input id="effect_level_db" type="range" min="-12" max="12" step="0.1"><output id="effect_level_db_value"></output></label>
-          <label><span>Clean Blend</span><input id="effect_clean_blend" type="range" min="0" max="1" step="0.01"><output id="effect_clean_blend_value"></output></label>
+          <label id="effect_drive_row"><span id="effect_drive_label">Drive</span><input id="effect_drive" type="range" min="0" max="1" step="0.01"><output id="effect_drive_value"></output></label>
+          <label id="effect_tone_row"><span id="effect_tone_label">Tone</span><input id="effect_tone" type="range" min="0" max="1" step="0.01"><output id="effect_tone_value"></output></label>
+          <label id="effect_level_row"><span id="effect_level_label">Level</span><input id="effect_level_db" type="range" min="-12" max="12" step="0.1"><output id="effect_level_db_value"></output></label>
+          <label id="effect_clean_blend_row"><span id="effect_clean_blend_label">Clean Blend</span><input id="effect_clean_blend" type="range" min="0" max="1" step="0.01"><output id="effect_clean_blend_value"></output></label>
         </div>
       </section>
     </main>

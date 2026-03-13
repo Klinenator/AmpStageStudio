@@ -10,7 +10,8 @@
 enum class EffectType {
   kNone,
   kKlon,
-  kTubeScreamer
+  kTubeScreamer,
+  kPlate
 };
 
 inline bool ParseEffectType(const std::string& value, EffectType& out) {
@@ -26,6 +27,10 @@ inline bool ParseEffectType(const std::string& value, EffectType& out) {
     out = EffectType::kTubeScreamer;
     return true;
   }
+  if (value == "plate") {
+    out = EffectType::kPlate;
+    return true;
+  }
   return false;
 }
 
@@ -34,6 +39,7 @@ inline const char* EffectTypeName(EffectType type) {
     case EffectType::kNone: return "none";
     case EffectType::kKlon: return "klon";
     case EffectType::kTubeScreamer: return "tubescreamer";
+    case EffectType::kPlate: return "plate";
   }
   return "none";
 }

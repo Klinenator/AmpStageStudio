@@ -20,6 +20,7 @@
 
 #include "../amp_profile.h"
 #include "../effects/klon_effect.h"
+#include "../effects/plate_reverb_effect.h"
 #include "../effects/tubescreamer_effect.h"
 #include "../live_control.h"
 #include "../power_stage.h"
@@ -74,6 +75,7 @@ struct RuntimeSettings {
   PowerStageControls power_controls;
   KlonControls klon_controls;
   TubeScreamerControls tubescreamer_controls;
+  PlateReverbControls plate_controls;
 };
 
 struct AppState {
@@ -81,6 +83,7 @@ struct AppState {
   PowerStage power_stage;
   KlonEffect effect;
   TubeScreamerEffect tubescreamer;
+  PlateReverbEffect plate;
   std::shared_ptr<RuntimeSettings> settings;
   std::string applied_amp_name;
   std::string applied_preamp_name;
@@ -102,7 +105,7 @@ void PrintUsage(const char* program_name) {
       << "  --preamp-file PATH       Explicit preamp profile file path\n"
       << "  --power-tube NAME        6V6, 6L6, EL34, or EL84\n"
       << "  --preset NAME            marshall or fender\n"
-      << "  --effect NAME            none, klon, or tubescreamer\n"
+      << "  --effect NAME            none, klon, tubescreamer, or plate\n"
       << "  --device NAME            Duplex PortAudio device substring, default default\n"
       << "  --input-device NAME      PortAudio input device substring\n"
       << "  --output-device NAME     PortAudio output device substring\n"
@@ -118,10 +121,10 @@ void PrintUsage(const char* program_name) {
       << "  --mid VALUE              Tone stack mid 0..10 override\n"
       << "  --treble VALUE           Tone stack treble 0..10 override\n"
       << "  --presence VALUE         Tone stack presence 0..10 override\n"
-      << "  --effect-drive VALUE     Effect drive 0..1, default 0.5\n"
-      << "  --effect-tone VALUE      Effect tone 0..1, default 0.5\n"
+      << "  --effect-drive VALUE     Pedal drive, or plate mix 0..1, default 0.5\n"
+      << "  --effect-tone VALUE      Pedal tone, or plate brightness 0..1, default 0.5\n"
       << "  --effect-level-db VALUE  Effect output trim, default 0\n"
-      << "  --effect-clean-blend V   Klon clean blend 0..1, default 0.45\n"
+      << "  --effect-clean-blend V   Klon clean blend, or plate decay 0..1, default 0.45\n"
       << "  --list-devices           Print PortAudio devices and exit\n";
 }
 
@@ -268,7 +271,9 @@ PaDeviceIndex FindOutputDevice(const std::string& needle) {
 }
 
 bool IsEffectEnabled(const std::string& effect_name) {
-  return effect_name == "klon" || effect_name == "tubescreamer";
+  return effect_name == "klon" ||
+         effect_name == "tubescreamer" ||
+         effect_name == "plate";
 }
 
 std::optional<PreampProfile> ResolvePreampProfile(const Config& config) {
@@ -387,6 +392,8 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
     settings->effect = EffectType::kKlon;
   } else if (config.effect == "tubescreamer") {
     settings->effect = EffectType::kTubeScreamer;
+  } else if (config.effect == "plate") {
+    settings->effect = EffectType::kPlate;
   }
 
   settings->klon_controls.drive = config.effect_drive;
@@ -397,6 +404,11 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
   settings->tubescreamer_controls.drive = config.effect_drive;
   settings->tubescreamer_controls.tone = config.effect_tone;
   settings->tubescreamer_controls.level_db = config.effect_level_db;
+
+  settings->plate_controls.mix = config.effect_drive;
+  settings->plate_controls.brightness = config.effect_tone;
+  settings->plate_controls.level_db = config.effect_level_db;
+  settings->plate_controls.decay = config.effect_clean_blend;
 
   if (live_state) {
     if (live_state->effect) settings->effect = *live_state->effect;
@@ -418,17 +430,21 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
     if (live_state->effect_drive) {
       settings->klon_controls.drive = *live_state->effect_drive;
       settings->tubescreamer_controls.drive = *live_state->effect_drive;
+      settings->plate_controls.mix = *live_state->effect_drive;
     }
     if (live_state->effect_tone) {
       settings->klon_controls.tone = *live_state->effect_tone;
       settings->tubescreamer_controls.tone = *live_state->effect_tone;
+      settings->plate_controls.brightness = *live_state->effect_tone;
     }
     if (live_state->effect_level_db) {
       settings->klon_controls.level_db = *live_state->effect_level_db;
       settings->tubescreamer_controls.level_db = *live_state->effect_level_db;
+      settings->plate_controls.level_db = *live_state->effect_level_db;
     }
     if (live_state->effect_clean_blend) {
       settings->klon_controls.clean_blend = *live_state->effect_clean_blend;
+      settings->plate_controls.decay = *live_state->effect_clean_blend;
     }
   }
 
@@ -479,12 +495,14 @@ int AudioCallback(const void* input_buffer,
       state->power_stage.Reset();
       state->effect.Reset();
       state->tubescreamer.Reset();
+      state->plate.Reset();
       state->applied_amp_name = settings->amp_name;
       state->applied_preamp_name = settings->preamp_name;
     }
     if (state->applied_effect != settings->effect) {
       state->effect.Reset();
       state->tubescreamer.Reset();
+      state->plate.Reset();
       state->applied_effect = settings->effect;
     }
     if (state->applied_power_stage_enabled != settings->has_power_stage ||
@@ -502,6 +520,7 @@ int AudioCallback(const void* input_buffer,
     }
     state->effect.SetControls(settings->klon_controls);
     state->tubescreamer.SetControls(settings->tubescreamer_controls);
+    state->plate.SetControls(settings->plate_controls);
   }
 
   for (unsigned long i = 0; i < frames_per_buffer; ++i) {
@@ -519,6 +538,9 @@ int AudioCallback(const void* input_buffer,
     s = state->preamp.Process(s);
     if (settings && settings->has_power_stage) {
       s = state->power_stage.Process(s);
+    }
+    if (settings && settings->effect == EffectType::kPlate) {
+      s = state->plate.Process(s);
     }
 
     const float clamped = std::clamp(s, -1.0f, 1.0f);
@@ -659,6 +681,7 @@ int main(int argc, char** argv) {
   state.power_stage.SetSampleRate(kSampleRateHz);
   state.effect.SetSampleRate(kSampleRateHz);
   state.tubescreamer.SetSampleRate(kSampleRateHz);
+  state.plate.SetSampleRate(kSampleRateHz);
   std::atomic_store(&state.settings, settings);
 
   CheckPa(Pa_Initialize(), "Pa_Initialize");

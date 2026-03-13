@@ -10,6 +10,7 @@
 
 #include "../amp_profile.h"
 #include "../effects/klon_effect.h"
+#include "../effects/plate_reverb_effect.h"
 #include "../effects/tubescreamer_effect.h"
 #include "../power_stage.h"
 #include "../preamp.h"
@@ -58,7 +59,7 @@ void PrintUsage(const char* program_name) {
       << "  --preamp-file PATH     Explicit preamp profile file path\n"
       << "  --power-tube NAME      6V6, 6L6, EL34, or EL84\n"
       << "  --preset NAME          marshall or fender\n"
-      << "  --effect NAME          none, klon, or tubescreamer, default none\n"
+      << "  --effect NAME          none, klon, tubescreamer, or plate, default none\n"
       << "  --input-wav PATH       Use a WAV file instead of generating a sine\n"
       << "  --input-channel N      Channel to read from WAV input, default 0\n"
       << "  --frequency-hz VALUE   Input sine frequency, default 82.41\n"
@@ -73,10 +74,10 @@ void PrintUsage(const char* program_name) {
       << "  --mid VALUE            Tone stack mid 0..10, default 5\n"
       << "  --treble VALUE         Tone stack treble 0..10, default 5\n"
       << "  --presence VALUE       Tone stack presence 0..10, default 5\n"
-      << "  --effect-drive VALUE   0..1, default 0.5\n"
-      << "  --effect-tone VALUE    0..1, default 0.5\n"
+      << "  --effect-drive VALUE   Pedal drive, or plate mix 0..1, default 0.5\n"
+      << "  --effect-tone VALUE    Pedal tone, or plate brightness 0..1, default 0.5\n"
       << "  --effect-level-db VAL  Output trim for effect, default 0\n"
-      << "  --effect-clean-blend V 0..1, default 0.45\n";
+      << "  --effect-clean-blend V Klon clean blend, or plate decay 0..1, default 0.45\n";
 }
 
 std::optional<PreampProfile> ResolvePreampProfile(const Config& config) {
@@ -416,7 +417,9 @@ bool ReadInputWav(const std::string& path,
 }
 
 bool IsEffectEnabled(const std::string& effect_name) {
-  return effect_name == "klon" || effect_name == "tubescreamer";
+  return effect_name == "klon" ||
+         effect_name == "tubescreamer" ||
+         effect_name == "plate";
 }
 }  // namespace
 
@@ -499,6 +502,7 @@ int main(int argc, char** argv) {
 
   KlonEffect effect;
   TubeScreamerEffect tubescreamer;
+  PlateReverbEffect plate;
   if (IsEffectEnabled(config.effect)) {
     if (config.effect == "klon") {
       effect.SetSampleRate(config.sample_rate_hz);
@@ -508,13 +512,21 @@ int main(int argc, char** argv) {
       controls.level_db = config.effect_level_db;
       controls.clean_blend = config.effect_clean_blend;
       effect.SetControls(controls);
-    } else {
+    } else if (config.effect == "tubescreamer") {
       tubescreamer.SetSampleRate(config.sample_rate_hz);
       TubeScreamerControls controls;
       controls.drive = config.effect_drive;
       controls.tone = config.effect_tone;
       controls.level_db = config.effect_level_db;
       tubescreamer.SetControls(controls);
+    } else {
+      plate.SetSampleRate(config.sample_rate_hz);
+      PlateReverbControls controls;
+      controls.mix = config.effect_drive;
+      controls.brightness = config.effect_tone;
+      controls.level_db = config.effect_level_db;
+      controls.decay = config.effect_clean_blend;
+      plate.SetControls(controls);
     }
   }
 
@@ -583,6 +595,9 @@ int main(int argc, char** argv) {
     s = preamp.Process(s);
     if (has_power_stage) {
       s = power_stage.Process(s);
+    }
+    if (config.effect == "plate") {
+      s = plate.Process(s);
     }
     output_samples[i] = s;
   }

@@ -27,6 +27,52 @@ function $(id) {
   return document.getElementById(id);
 }
 
+function refreshEffectSchema() {
+  const effect = $("effect")?.value || "none";
+  const config = {
+    none: {
+      drive: "Drive",
+      tone: "Tone",
+      level: "Level",
+      cleanBlend: "Clean Blend",
+      showCleanBlend: false,
+    },
+    klon: {
+      drive: "Drive",
+      tone: "Tone",
+      level: "Level",
+      cleanBlend: "Clean Blend",
+      showCleanBlend: true,
+    },
+    tubescreamer: {
+      drive: "Drive",
+      tone: "Tone",
+      level: "Level",
+      cleanBlend: "Clean Blend",
+      showCleanBlend: false,
+    },
+    plate: {
+      drive: "Mix",
+      tone: "Brightness",
+      level: "Level",
+      cleanBlend: "Decay",
+      showCleanBlend: true,
+    },
+  }[effect] || {
+    drive: "Drive",
+    tone: "Tone",
+    level: "Level",
+    cleanBlend: "Clean Blend",
+    showCleanBlend: true,
+  };
+
+  $("effect_drive_label").textContent = config.drive;
+  $("effect_tone_label").textContent = config.tone;
+  $("effect_level_label").textContent = config.level;
+  $("effect_clean_blend_label").textContent = config.cleanBlend;
+  $("effect_clean_blend_row").hidden = !config.showCleanBlend;
+}
+
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
   if (!response.ok) throw new Error(`Request failed: ${response.status}`);
@@ -102,6 +148,7 @@ function applyState(data) {
     if (inputSelect && data.input_device !== undefined) inputSelect.value = data.input_device;
     if (outputSelect && data.output_device !== undefined) outputSelect.value = data.output_device;
   }
+  refreshEffectSchema();
   $("status").textContent = `Connected to ${data._control_file || "control file"}`;
 }
 
@@ -192,14 +239,19 @@ async function init() {
 
     applyState(stateData);
     await refreshControlSchema();
+    refreshEffectSchema();
     for (const key of stateKeys) {
       const el = $(key);
       if (!el) continue;
       el.addEventListener("input", () => {
         syncOutput(key, el.value);
+        if (key === "effect") refreshEffectSchema();
         scheduleSave();
       });
-      el.addEventListener("change", scheduleSave);
+      el.addEventListener("change", () => {
+        if (key === "effect") refreshEffectSchema();
+        scheduleSave();
+      });
     }
     $("input_device_select").addEventListener("change", scheduleSave);
     $("output_device_select").addEventListener("change", scheduleSave);

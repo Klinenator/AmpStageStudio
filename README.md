@@ -10,6 +10,7 @@ Circuit-inspired guitar amp modeling sandbox with swappable preamp, power tube, 
 - lets you pair those preamps with selectable power-tube families: `6V6`, `6L6`, `EL34`, `EL84`
 - exposes amp-aware tone controls such as `bass`, `mid`, `treble`, and `presence` where the selected preamp supports them
 - places front-end effects like `klon` and `tubescreamer` before the amp
+- includes a post-amp `plate` reverb for plate-style ambience
 - supports offline A/B rendering from WAV files
 - supports live audio input with PortAudio
 - supports live browser control through a lightweight local web UI
@@ -106,6 +107,7 @@ python3 web/server.py --control-file web/live_state.cfg
 ├── power_stage.h
 ├── effects/
 │   ├── klon_effect.h
+│   ├── plate_reverb_effect.h
 │   └── tubescreamer_effect.h
 ├── tube_stage.h
 └── tools/
@@ -191,6 +193,20 @@ Or try a Tube Screamer-inspired front-end:
   --effect-level-db -2 \
   --preamp fender_deluxe_reverb \
   --power-tube 6V6
+```
+
+Or add a post-amp plate reverb:
+
+```bash
+./build/tube_stage_test \
+  --input-wav "Dry Guitar.wav" \
+  --output-prefix dry_guitar_plate_mark \
+  --effect plate \
+  --effect-drive 0.22 \
+  --effect-tone 0.65 \
+  --effect-clean-blend 0.6 \
+  --effect-level-db -1 \
+  --amp mesa_boogie_mark_iic_plus
 ```
 
 You can also load a specific file directly:
