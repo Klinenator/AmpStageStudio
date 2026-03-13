@@ -137,8 +137,8 @@
             </div>
             <div class="effect-lane" id="pre_effect_lane">
               <section class="effect-block" id="effect_compression_block" data-effect="compression" tabindex="0">
-                <label class="effect-toggle"><span>Compression</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_compression_enabled" type="checkbox"></label>
-                <div class="effect-pedal effect-pedal-compression" aria-hidden="true">
+                <div class="effect-toggle"><span>Compression</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span></div>
+                <div class="effect-pedal effect-pedal-compression">
                   <span class="pedal-port pedal-port-left"></span>
                   <span class="pedal-port pedal-port-right"></span>
                   <div class="pedal-top">
@@ -149,15 +149,18 @@
                   </div>
                   <div class="pedal-nameplate">COMP</div>
                   <span class="pedal-led"></span>
-                  <span class="pedal-footswitch"></span>
+                  <label class="pedal-footswitch" aria-label="Toggle Compression">
+                    <input id="effect_compression_enabled" class="pedal-toggle-input" type="checkbox">
+                    <span class="pedal-switch-cap"></span>
+                  </label>
                 </div>
                 <p class="effect-state" id="effect_compression_state">Bypassed</p>
                 <p class="effect-meta" id="effect_compression_meta"></p>
               </section>
 
               <section class="effect-block" id="effect_klon_block" data-effect="klon" tabindex="0">
-                <label class="effect-toggle"><span>Klon</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_klon_enabled" type="checkbox"></label>
-                <div class="effect-pedal effect-pedal-drive" aria-hidden="true">
+                <div class="effect-toggle"><span>Klon</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span></div>
+                <div class="effect-pedal effect-pedal-drive">
                   <span class="pedal-port pedal-port-left"></span>
                   <span class="pedal-port pedal-port-right"></span>
                   <div class="pedal-top">
@@ -167,15 +170,18 @@
                   </div>
                   <div class="pedal-nameplate">DRIVE</div>
                   <span class="pedal-led"></span>
-                  <span class="pedal-footswitch"></span>
+                  <label class="pedal-footswitch" aria-label="Toggle Klon">
+                    <input id="effect_klon_enabled" class="pedal-toggle-input" type="checkbox">
+                    <span class="pedal-switch-cap"></span>
+                  </label>
                 </div>
                 <p class="effect-state" id="effect_klon_state">Bypassed</p>
                 <p class="effect-meta" id="effect_klon_meta"></p>
               </section>
 
               <section class="effect-block" id="effect_tubescreamer_block" data-effect="tubescreamer" tabindex="0">
-                <label class="effect-toggle"><span>Tube Screamer</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_tubescreamer_enabled" type="checkbox"></label>
-                <div class="effect-pedal effect-pedal-drive" aria-hidden="true">
+                <div class="effect-toggle"><span>Tube Screamer</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span></div>
+                <div class="effect-pedal effect-pedal-drive">
                   <span class="pedal-port pedal-port-left"></span>
                   <span class="pedal-port pedal-port-right"></span>
                   <div class="pedal-top">
@@ -185,15 +191,18 @@
                   </div>
                   <div class="pedal-nameplate">DRIVE</div>
                   <span class="pedal-led"></span>
-                  <span class="pedal-footswitch"></span>
+                  <label class="pedal-footswitch" aria-label="Toggle Tube Screamer">
+                    <input id="effect_tubescreamer_enabled" class="pedal-toggle-input" type="checkbox">
+                    <span class="pedal-switch-cap"></span>
+                  </label>
                 </div>
                 <p class="effect-state" id="effect_tubescreamer_state">Bypassed</p>
                 <p class="effect-meta" id="effect_tubescreamer_meta"></p>
               </section>
 
               <section class="effect-block" id="effect_rat_block" data-effect="rat" tabindex="0">
-                <label class="effect-toggle"><span>RAT</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_rat_enabled" type="checkbox"></label>
-                <div class="effect-pedal effect-pedal-drive" aria-hidden="true">
+                <div class="effect-toggle"><span>RAT</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span></div>
+                <div class="effect-pedal effect-pedal-drive">
                   <span class="pedal-port pedal-port-left"></span>
                   <span class="pedal-port pedal-port-right"></span>
                   <div class="pedal-top">
@@ -203,7 +212,10 @@
                   </div>
                   <div class="pedal-nameplate">DRIVE</div>
                   <span class="pedal-led"></span>
-                  <span class="pedal-footswitch"></span>
+                  <label class="pedal-footswitch" aria-label="Toggle RAT">
+                    <input id="effect_rat_enabled" class="pedal-toggle-input" type="checkbox">
+                    <span class="pedal-switch-cap"></span>
+                  </label>
                 </div>
                 <p class="effect-state" id="effect_rat_state">Bypassed</p>
                 <p class="effect-meta" id="effect_rat_meta"></p>
@@ -218,8 +230,8 @@
             </div>
             <div class="effect-lane" id="post_effect_lane">
               <section class="effect-block" id="effect_chorus_block" data-effect="chorus" tabindex="0">
-                <label class="effect-toggle"><span>Chorus</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_chorus_enabled" type="checkbox"></label>
-                <div class="effect-pedal effect-pedal-chorus" aria-hidden="true">
+                <div class="effect-toggle"><span>Chorus</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span></div>
+                <div class="effect-pedal effect-pedal-chorus">
                   <span class="pedal-port pedal-port-left"></span>
                   <span class="pedal-port pedal-port-right"></span>
                   <div class="pedal-top">
@@ -229,15 +241,18 @@
                   </div>
                   <div class="pedal-nameplate">CHORUS</div>
                   <span class="pedal-led"></span>
-                  <span class="pedal-footswitch"></span>
+                  <label class="pedal-footswitch" aria-label="Toggle Chorus">
+                    <input id="effect_chorus_enabled" class="pedal-toggle-input" type="checkbox">
+                    <span class="pedal-switch-cap"></span>
+                  </label>
                 </div>
                 <p class="effect-state" id="effect_chorus_state">Bypassed</p>
                 <p class="effect-meta" id="effect_chorus_meta"></p>
               </section>
 
               <section class="effect-block" id="effect_plate_block" data-effect="plate" tabindex="0">
-                <label class="effect-toggle"><span>Plate</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span><input id="effect_plate_enabled" type="checkbox"></label>
-                <div class="effect-pedal effect-pedal-reverb" aria-hidden="true">
+                <div class="effect-toggle"><span>Plate</span><span class="drag-handle" draggable="true" title="Drag pedal">::</span></div>
+                <div class="effect-pedal effect-pedal-reverb">
                   <span class="pedal-port pedal-port-left"></span>
                   <span class="pedal-port pedal-port-right"></span>
                   <div class="pedal-top">
@@ -248,7 +263,10 @@
                   </div>
                   <div class="pedal-nameplate">REVERB</div>
                   <span class="pedal-led"></span>
-                  <span class="pedal-footswitch"></span>
+                  <label class="pedal-footswitch" aria-label="Toggle Plate">
+                    <input id="effect_plate_enabled" class="pedal-toggle-input" type="checkbox">
+                    <span class="pedal-switch-cap"></span>
+                  </label>
                 </div>
                 <p class="effect-state" id="effect_plate_state">Bypassed</p>
                 <p class="effect-meta" id="effect_plate_meta"></p>
