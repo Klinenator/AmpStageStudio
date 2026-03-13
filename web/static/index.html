@@ -56,7 +56,15 @@
           <label><span id="preamp_level_label">Level</span><input id="level_db" type="range" min="-12" max="6" step="0.1"><output id="level_db_value"></output></label>
           <label><span id="preamp_bright_label">Bright</span><input id="bright_db" type="range" min="0" max="8" step="0.1"><output id="bright_db_value"></output></label>
           <label><span id="preamp_bias_label">Bias</span><input id="bias_trim" type="range" min="-0.2" max="0.2" step="0.005"><output id="bias_trim_value"></output></label>
-          <p id="preamp_schema_note">These labels reflect the current modeled controls.</p>
+          <p id="preamp_schema_note">These controls follow the current preamp family.</p>
+        </div>
+
+        <div class="panel">
+          <h2>Tone Stack</h2>
+          <label id="tone_bass_row" hidden><span id="tone_bass_label">Bass</span><input id="bass" type="range" min="0" max="10" step="0.1"><output id="bass_value"></output></label>
+          <label id="tone_mid_row" hidden><span id="tone_mid_label">Mid</span><input id="mid" type="range" min="0" max="10" step="0.1"><output id="mid_value"></output></label>
+          <label id="tone_treble_row" hidden><span id="tone_treble_label">Treble</span><input id="treble" type="range" min="0" max="10" step="0.1"><output id="treble_value"></output></label>
+          <label id="tone_presence_row" hidden><span id="tone_presence_label">Presence</span><input id="presence" type="range" min="0" max="10" step="0.1"><output id="presence_value"></output></label>
         </div>
 
         <div class="panel">

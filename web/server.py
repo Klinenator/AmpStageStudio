@@ -75,7 +75,11 @@ def default_control_schema() -> dict[str, str]:
         "level_label": "Level",
         "bright_label": "Bright",
         "bias_label": "Bias",
-        "note": "These labels reflect the current modeled controls. Full amp-specific tone stacks still need dedicated DSP parameters.",
+        "bass_label": "",
+        "mid_label": "",
+        "treble_label": "",
+        "presence_label": "",
+        "note": "These controls follow the current preamp family. Tone stack behavior is circuit-inspired, not an exact schematic solve.",
     }
 
 
@@ -109,6 +113,10 @@ def load_control_schema(state: dict[str, str]) -> dict[str, str]:
     schema["level_label"] = preamp_profile.get("ui_level_label", schema["level_label"])
     schema["bright_label"] = preamp_profile.get("ui_bright_label", schema["bright_label"])
     schema["bias_label"] = preamp_profile.get("ui_bias_label", schema["bias_label"])
+    schema["bass_label"] = preamp_profile.get("ui_bass_label", "")
+    schema["mid_label"] = preamp_profile.get("ui_mid_label", "")
+    schema["treble_label"] = preamp_profile.get("ui_treble_label", "")
+    schema["presence_label"] = preamp_profile.get("ui_presence_label", "")
     return schema
 
 

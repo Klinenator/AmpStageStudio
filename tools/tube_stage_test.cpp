@@ -36,6 +36,10 @@ struct Config {
   std::optional<double> level_db;
   std::optional<double> bright_db;
   std::optional<double> bias_trim;
+  std::optional<double> bass;
+  std::optional<double> mid;
+  std::optional<double> treble;
+  std::optional<double> presence;
   std::optional<PowerTubeType> power_tube_type;
   double effect_drive = 0.5;
   double effect_tone = 0.5;
@@ -64,6 +68,10 @@ void PrintUsage(const char* program_name) {
       << "  --level-db VALUE       Output trim, default -6\n"
       << "  --bright-db VALUE      Bright boost, default 3\n"
       << "  --bias-trim VALUE      Bias trim, default 0.02\n"
+      << "  --bass VALUE           Tone stack bass 0..10, default 5\n"
+      << "  --mid VALUE            Tone stack mid 0..10, default 5\n"
+      << "  --treble VALUE         Tone stack treble 0..10, default 5\n"
+      << "  --presence VALUE       Tone stack presence 0..10, default 5\n"
       << "  --effect-drive VALUE   0..1, default 0.5\n"
       << "  --effect-tone VALUE    0..1, default 0.5\n"
       << "  --effect-level-db VAL  Output trim for effect, default 0\n"
@@ -437,6 +445,10 @@ int main(int argc, char** argv) {
         ParseOptionalDoubleArg(arg, "--level-db", i, argc, argv, config.level_db) ||
         ParseOptionalDoubleArg(arg, "--bright-db", i, argc, argv, config.bright_db) ||
         ParseOptionalDoubleArg(arg, "--bias-trim", i, argc, argv, config.bias_trim) ||
+        ParseOptionalDoubleArg(arg, "--bass", i, argc, argv, config.bass) ||
+        ParseOptionalDoubleArg(arg, "--mid", i, argc, argv, config.mid) ||
+        ParseOptionalDoubleArg(arg, "--treble", i, argc, argv, config.treble) ||
+        ParseOptionalDoubleArg(arg, "--presence", i, argc, argv, config.presence) ||
         ParseDoubleArg(arg, "--effect-drive", i, argc, argv, config.effect_drive) ||
         ParseDoubleArg(arg, "--effect-tone", i, argc, argv, config.effect_tone) ||
         ParseDoubleArg(arg, "--effect-level-db", i, argc, argv, config.effect_level_db) ||
@@ -531,6 +543,18 @@ int main(int argc, char** argv) {
   }
   if (config.bias_trim.has_value()) {
     controls.bias_trim = *config.bias_trim;
+  }
+  if (config.bass.has_value()) {
+    controls.bass = *config.bass;
+  }
+  if (config.mid.has_value()) {
+    controls.mid = *config.mid;
+  }
+  if (config.treble.has_value()) {
+    controls.treble = *config.treble;
+  }
+  if (config.presence.has_value()) {
+    controls.presence = *config.presence;
   }
   stage.SetControls(controls);
 

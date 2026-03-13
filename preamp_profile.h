@@ -15,6 +15,10 @@ struct PreampProfile {
   std::string ui_level_label = "Level";
   std::string ui_bright_label = "Bright";
   std::string ui_bias_label = "Bias";
+  std::string ui_bass_label;
+  std::string ui_mid_label;
+  std::string ui_treble_label;
+  std::string ui_presence_label;
   TubeStageSpec spec;
   TubeStageControls defaults;
 };
@@ -95,6 +99,22 @@ inline std::optional<PreampProfile> LoadPreampProfileFromFile(
       profile.ui_bias_label = value;
       continue;
     }
+    if (key == "ui_bass_label") {
+      profile.ui_bass_label = value;
+      continue;
+    }
+    if (key == "ui_mid_label") {
+      profile.ui_mid_label = value;
+      continue;
+    }
+    if (key == "ui_treble_label") {
+      profile.ui_treble_label = value;
+      continue;
+    }
+    if (key == "ui_presence_label") {
+      profile.ui_presence_label = value;
+      continue;
+    }
 
     double parsed = 0.0;
     if (!ParsePreampProfileDouble(value, parsed)) {
@@ -128,6 +148,14 @@ inline std::optional<PreampProfile> LoadPreampProfileFromFile(
       profile.defaults.bright_db = parsed;
     } else if (key == "default_bias_trim") {
       profile.defaults.bias_trim = parsed;
+    } else if (key == "default_bass") {
+      profile.defaults.bass = parsed;
+    } else if (key == "default_mid") {
+      profile.defaults.mid = parsed;
+    } else if (key == "default_treble") {
+      profile.defaults.treble = parsed;
+    } else if (key == "default_presence") {
+      profile.defaults.presence = parsed;
     } else {
       if (error_out) *error_out = "Unknown preamp profile key " + key + " in " + path;
       return std::nullopt;
@@ -148,6 +176,10 @@ inline PreampProfile BuiltinPresetPreampProfile(const std::string& preset_name) 
     profile.defaults.level_db = -4.0;
     profile.defaults.bright_db = 2.0;
     profile.defaults.bias_trim = 0.0;
+    profile.ui_bass_label = "Bass";
+    profile.ui_treble_label = "Treble";
+    profile.defaults.bass = 5.0;
+    profile.defaults.treble = 5.0;
     return profile;
   }
 
@@ -158,5 +190,13 @@ inline PreampProfile BuiltinPresetPreampProfile(const std::string& preset_name) 
   profile.defaults.level_db = -6.0;
   profile.defaults.bright_db = 3.0;
   profile.defaults.bias_trim = 0.02;
+  profile.ui_bass_label = "Bass";
+  profile.ui_mid_label = "Middle";
+  profile.ui_treble_label = "Treble";
+  profile.ui_presence_label = "Presence";
+  profile.defaults.bass = 5.0;
+  profile.defaults.mid = 5.0;
+  profile.defaults.treble = 5.0;
+  profile.defaults.presence = 5.0;
   return profile;
 }

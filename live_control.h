@@ -51,6 +51,10 @@ struct LiveControlState {
   std::optional<double> level_db;
   std::optional<double> bright_db;
   std::optional<double> bias_trim;
+  std::optional<double> bass;
+  std::optional<double> mid;
+  std::optional<double> treble;
+  std::optional<double> presence;
   std::optional<double> power_drive_db;
   std::optional<double> power_level_db;
   std::optional<double> power_bias_trim;
@@ -177,6 +181,14 @@ inline bool LoadLiveControlState(const std::string& path,
       parsed.bright_db = parsed_double;
     } else if (key == "bias_trim") {
       parsed.bias_trim = parsed_double;
+    } else if (key == "bass") {
+      parsed.bass = parsed_double;
+    } else if (key == "mid") {
+      parsed.mid = parsed_double;
+    } else if (key == "treble") {
+      parsed.treble = parsed_double;
+    } else if (key == "presence") {
+      parsed.presence = parsed_double;
     } else if (key == "power_drive_db") {
       parsed.power_drive_db = parsed_double;
     } else if (key == "power_level_db") {
@@ -242,6 +254,10 @@ inline bool SaveLiveControlState(const std::string& path,
   if (state.level_db) out << "level_db = " << *state.level_db << "\n";
   if (state.bright_db) out << "bright_db = " << *state.bright_db << "\n";
   if (state.bias_trim) out << "bias_trim = " << *state.bias_trim << "\n";
+  if (state.bass) out << "bass = " << *state.bass << "\n";
+  if (state.mid) out << "mid = " << *state.mid << "\n";
+  if (state.treble) out << "treble = " << *state.treble << "\n";
+  if (state.presence) out << "presence = " << *state.presence << "\n";
   if (state.power_drive_db) out << "power_drive_db = " << *state.power_drive_db << "\n";
   if (state.power_level_db) out << "power_level_db = " << *state.power_level_db << "\n";
   if (state.power_bias_trim) out << "power_bias_trim = " << *state.power_bias_trim << "\n";

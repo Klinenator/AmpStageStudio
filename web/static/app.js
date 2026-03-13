@@ -7,6 +7,10 @@ const stateKeys = [
   "level_db",
   "bright_db",
   "bias_trim",
+  "bass",
+  "mid",
+  "treble",
+  "presence",
   "power_drive_db",
   "power_level_db",
   "power_bias_trim",
@@ -41,6 +45,20 @@ async function refreshControlSchema() {
   $("preamp_level_label").textContent = schema.level_label || "Level";
   $("preamp_bright_label").textContent = schema.bright_label || "Bright";
   $("preamp_bias_label").textContent = schema.bias_label || "Bias";
+  const toneFields = [
+    ["bass", schema.bass_label],
+    ["mid", schema.mid_label],
+    ["treble", schema.treble_label],
+    ["presence", schema.presence_label],
+  ];
+  for (const [key, label] of toneFields) {
+    const row = $(`tone_${key}_row`);
+    const labelEl = $(`tone_${key}_label`);
+    if (!row || !labelEl) continue;
+    const visible = Boolean(label);
+    row.hidden = !visible;
+    if (visible) labelEl.textContent = label;
+  }
   $("preamp_schema_note").textContent =
     schema.note || "These labels reflect the current modeled controls.";
 }

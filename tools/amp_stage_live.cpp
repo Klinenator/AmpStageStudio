@@ -51,6 +51,10 @@ struct Config {
   std::optional<double> level_db;
   std::optional<double> bright_db;
   std::optional<double> bias_trim;
+  std::optional<double> bass;
+  std::optional<double> mid;
+  std::optional<double> treble;
+  std::optional<double> presence;
   std::optional<PowerTubeType> power_tube_type;
   double effect_drive = 0.5;
   double effect_tone = 0.5;
@@ -109,6 +113,10 @@ void PrintUsage(const char* program_name) {
       << "  --level-db VALUE         Tube stage level override\n"
       << "  --bright-db VALUE        Tube stage bright override\n"
       << "  --bias-trim VALUE        Tube stage bias override\n"
+      << "  --bass VALUE             Tone stack bass 0..10 override\n"
+      << "  --mid VALUE              Tone stack mid 0..10 override\n"
+      << "  --treble VALUE           Tone stack treble 0..10 override\n"
+      << "  --presence VALUE         Tone stack presence 0..10 override\n"
       << "  --effect-drive VALUE     Effect drive 0..1, default 0.5\n"
       << "  --effect-tone VALUE      Effect tone 0..1, default 0.5\n"
       << "  --effect-level-db VALUE  Effect output trim, default 0\n"
@@ -369,6 +377,10 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
   if (config.level_db) settings->stage_controls.level_db = *config.level_db;
   if (config.bright_db) settings->stage_controls.bright_db = *config.bright_db;
   if (config.bias_trim) settings->stage_controls.bias_trim = *config.bias_trim;
+  if (config.bass) settings->stage_controls.bass = *config.bass;
+  if (config.mid) settings->stage_controls.mid = *config.mid;
+  if (config.treble) settings->stage_controls.treble = *config.treble;
+  if (config.presence) settings->stage_controls.presence = *config.presence;
 
   if (config.effect == "klon") {
     settings->effect = EffectType::kKlon;
@@ -395,6 +407,10 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
     if (live_state->level_db) settings->stage_controls.level_db = *live_state->level_db;
     if (live_state->bright_db) settings->stage_controls.bright_db = *live_state->bright_db;
     if (live_state->bias_trim) settings->stage_controls.bias_trim = *live_state->bias_trim;
+    if (live_state->bass) settings->stage_controls.bass = *live_state->bass;
+    if (live_state->mid) settings->stage_controls.mid = *live_state->mid;
+    if (live_state->treble) settings->stage_controls.treble = *live_state->treble;
+    if (live_state->presence) settings->stage_controls.presence = *live_state->presence;
     if (live_state->power_drive_db) settings->power_controls.drive_db = *live_state->power_drive_db;
     if (live_state->power_level_db) settings->power_controls.level_db = *live_state->power_level_db;
     if (live_state->power_bias_trim) settings->power_controls.bias_trim = *live_state->power_bias_trim;
@@ -428,6 +444,10 @@ LiveControlState BuildLiveControlState(const RuntimeSettings& settings) {
   state.level_db = settings.stage_controls.level_db;
   state.bright_db = settings.stage_controls.bright_db;
   state.bias_trim = settings.stage_controls.bias_trim;
+  state.bass = settings.stage_controls.bass;
+  state.mid = settings.stage_controls.mid;
+  state.treble = settings.stage_controls.treble;
+  state.presence = settings.stage_controls.presence;
   if (settings.has_power_stage) {
     state.power_drive_db = settings.power_controls.drive_db;
     state.power_level_db = settings.power_controls.level_db;
@@ -541,6 +561,10 @@ int main(int argc, char** argv) {
         ParseOptionalDoubleArg(arg, "--level-db", i, argc, argv, config.level_db) ||
         ParseOptionalDoubleArg(arg, "--bright-db", i, argc, argv, config.bright_db) ||
         ParseOptionalDoubleArg(arg, "--bias-trim", i, argc, argv, config.bias_trim) ||
+        ParseOptionalDoubleArg(arg, "--bass", i, argc, argv, config.bass) ||
+        ParseOptionalDoubleArg(arg, "--mid", i, argc, argv, config.mid) ||
+        ParseOptionalDoubleArg(arg, "--treble", i, argc, argv, config.treble) ||
+        ParseOptionalDoubleArg(arg, "--presence", i, argc, argv, config.presence) ||
         ParseDoubleArg(arg, "--effect-drive", i, argc, argv, config.effect_drive) ||
         ParseDoubleArg(arg, "--effect-tone", i, argc, argv, config.effect_tone) ||
         ParseDoubleArg(arg, "--effect-level-db", i, argc, argv, config.effect_level_db) ||

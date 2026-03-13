@@ -8,6 +8,7 @@ Circuit-inspired guitar amp modeling sandbox with swappable preamp, power tube, 
 
 - models named preamp sections such as Fender, Marshall, Vox, and Mesa/Boogie-style voices
 - lets you pair those preamps with selectable power-tube families: `6V6`, `6L6`, `EL34`, `EL84`
+- exposes amp-aware tone controls such as `bass`, `mid`, `treble`, and `presence` where the selected preamp supports them
 - places front-end effects like `klon` and `tubescreamer` before the amp
 - supports offline A/B rendering from WAV files
 - supports live audio input with PortAudio
@@ -20,6 +21,7 @@ Current project shape:
 - amp presets are convenience bundles through `amps/*.amp`
 - power stage is selectable and independently overridable
 - effect, preamp, and power controls can be adjusted live
+- the web UI adapts control labels and tone-stack availability to the selected preamp
 - NAM offline rendering is available for reference comparisons when `NeuralAmpModelerCore` is checked out locally
 
 Current focus:
@@ -312,6 +314,7 @@ From the browser you can change:
 - power tube
 - effect type
 - preamp drive/level/bright/bias
+- tone-stack controls such as bass/mid/treble/presence when that preamp exposes them
 - power-stage drive/level/bias
 - effect drive/tone/level/clean blend
 
@@ -321,6 +324,7 @@ From the browser you can change:
 - The `preamps/` files are the current source of truth for stage voicing.
 - `--preamp` plus `--power-tube` is the most direct way to audition custom combinations.
 - `--preset marshall|fender` still works as a fallback when you do not specify a preamp or amp preset.
+- The tone controls are currently circuit-inspired approximations mapped per preamp family, not exact passive tone-stack circuit solvers yet.
 - `klon` is currently a Klon-inspired approximation, not an exact op-amp circuit solve.
 - `tubescreamer` is currently a Tube Screamer-inspired approximation, not an exact circuit solve.
 - This project is intentionally separate from `raspi-NAM`, which is focused on running
