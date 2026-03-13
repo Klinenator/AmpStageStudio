@@ -27,6 +27,183 @@ function $(id) {
   return document.getElementById(id);
 }
 
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function controlToMix(value, maxMix) {
+  const normalized = clamp(Number(value || 5), 0, 10);
+  return ((normalized - 5) / 5) * maxMix;
+}
+
+function onePoleCoefficients(sampleRate, cutoffHz) {
+  const clamped = clamp(cutoffHz, 1, 0.45 * sampleRate);
+  const a = Math.exp(-2 * Math.PI * clamped / sampleRate);
+  return {a, b: 1 - a};
+}
+
+function complexAdd(a, b) {
+  return {re: a.re + b.re, im: a.im + b.im};
+}
+
+function complexSub(a, b) {
+  return {re: a.re - b.re, im: a.im - b.im};
+}
+
+function complexMul(a, b) {
+  return {
+    re: a.re * b.re - a.im * b.im,
+    im: a.re * b.im + a.im * b.re,
+  };
+}
+
+function complexScale(a, scalar) {
+  return {re: a.re * scalar, im: a.im * scalar};
+}
+
+function complexMagnitude(a) {
+  return Math.sqrt(a.re * a.re + a.im * a.im);
+}
+
+function onePoleLpfResponse(sampleRate, cutoffHz, frequencyHz) {
+  const {a, b} = onePoleCoefficients(sampleRate, cutoffHz);
+  const omega = 2 * Math.PI * frequencyHz / sampleRate;
+  const zRe = Math.cos(omega);
+  const zIm = -Math.sin(omega);
+  const denom = {re: 1 - a * zRe, im: -a * zIm};
+  const denomMagSq = denom.re * denom.re + denom.im * denom.im;
+  return {
+    re: b * denom.re / denomMagSq,
+    im: -b * denom.im / denomMagSq,
+  };
+}
+
+function onePoleHpfResponse(sampleRate, cutoffHz, frequencyHz) {
+  return complexSub({re: 1, im: 0}, onePoleLpfResponse(sampleRate, cutoffHz, frequencyHz));
+}
+
+function responseDbAt(frequencyHz, controls) {
+  const sampleRate = 48000;
+  const bassMix = controlToMix(controls.bass, 0.55);
+  const midMix = controlToMix(controls.mid, 0.45);
+  const trebleMix = controlToMix(controls.treble, 0.55);
+  const presenceMix = controlToMix(controls.presence, 0.35);
+
+  const bass = onePoleLpfResponse(sampleRate, 180, frequencyHz);
+  const mid = complexMul(
+    onePoleHpfResponse(sampleRate, 350, frequencyHz),
+    onePoleLpfResponse(sampleRate, 1400, frequencyHz),
+  );
+  const treble = onePoleHpfResponse(sampleRate, 1800, frequencyHz);
+  const presence = onePoleHpfResponse(sampleRate, 2800, frequencyHz);
+
+  let pre = {re: 1, im: 0};
+  pre = complexAdd(pre, complexScale(bass, bassMix));
+  pre = complexAdd(pre, complexScale(mid, midMix));
+  pre = complexAdd(pre, complexScale(treble, trebleMix));
+  const toneActivity = Math.abs(bassMix) + Math.abs(midMix) + Math.abs(trebleMix);
+  pre = complexScale(pre, 1 / (1 + 0.18 * toneActivity));
+
+  let post = complexAdd({re: 1, im: 0}, complexScale(presence, presenceMix));
+  post = complexScale(post, 1 / (1 + 0.15 * Math.abs(presenceMix)));
+
+  const total = complexMul(pre, post);
+  return 20 * Math.log10(Math.max(1e-6, complexMagnitude(total)));
+}
+
+function buildToneResponseCurve(controls) {
+  const points = [];
+  const minFreq = 20;
+  const maxFreq = 20000;
+  const steps = 160;
+  for (let i = 0; i < steps; i += 1) {
+    const t = i / (steps - 1);
+    const freq = minFreq * (maxFreq / minFreq) ** t;
+    points.push({freq, db: responseDbAt(freq, controls)});
+  }
+  return points;
+}
+
+function valueOrDefault(id, fallback) {
+  const el = $(id);
+  return el ? Number(el.value) : fallback;
+}
+
+function drawTonePlot() {
+  const svg = $("tone_plot");
+  if (!svg) return;
+
+  const width = 760;
+  const height = 280;
+  const margin = {top: 18, right: 18, bottom: 28, left: 44};
+  const innerWidth = width - margin.left - margin.right;
+  const innerHeight = height - margin.top - margin.bottom;
+  const dbMin = -18;
+  const dbMax = 12;
+  const freqMin = 20;
+  const freqMax = 20000;
+
+  const currentCurve = buildToneResponseCurve({
+    bass: valueOrDefault("bass", 5),
+    mid: valueOrDefault("mid", 5),
+    treble: valueOrDefault("treble", 5),
+    presence: valueOrDefault("presence", 5),
+  });
+  const referenceCurve = buildToneResponseCurve({
+    bass: 5,
+    mid: 5,
+    treble: 5,
+    presence: 5,
+  });
+
+  const xForFreq = (freq) => {
+    const t = Math.log(freq / freqMin) / Math.log(freqMax / freqMin);
+    return margin.left + t * innerWidth;
+  };
+  const yForDb = (db) => {
+    const t = (clamp(db, dbMin, dbMax) - dbMin) / (dbMax - dbMin);
+    return margin.top + (1 - t) * innerHeight;
+  };
+  const pathForCurve = (curve) => curve.map((point, index) => {
+    const x = xForFreq(point.freq).toFixed(2);
+    const y = yForDb(point.db).toFixed(2);
+    return `${index === 0 ? "M" : "L"} ${x} ${y}`;
+  }).join(" ");
+
+  const freqLines = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+  const dbLines = [-18, -12, -6, 0, 6, 12];
+
+  let markup = "";
+  for (const db of dbLines) {
+    const y = yForDb(db);
+    markup += `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="rgba(31,23,19,0.14)" stroke-width="1" />`;
+    markup += `<text x="${margin.left - 8}" y="${y + 4}" text-anchor="end" font-size="11" fill="rgba(31,23,19,0.72)">${db > 0 ? "+" : ""}${db} dB</text>`;
+  }
+
+  for (const freq of freqLines) {
+    const x = xForFreq(freq);
+    markup += `<line x1="${x}" y1="${margin.top}" x2="${x}" y2="${height - margin.bottom}" stroke="rgba(31,23,19,0.10)" stroke-width="1" />`;
+    const label = freq >= 1000 ? `${freq / 1000}k` : `${freq}`;
+    markup += `<text x="${x}" y="${height - 8}" text-anchor="middle" font-size="11" fill="rgba(31,23,19,0.72)">${label}</text>`;
+  }
+
+  markup += `<rect x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}" fill="none" stroke="rgba(31,23,19,0.26)" stroke-width="1.2" />`;
+  markup += `<path d="${pathForCurve(referenceCurve)}" fill="none" stroke="rgba(31,23,19,0.45)" stroke-width="2" stroke-dasharray="5 5" />`;
+  markup += `<path d="${pathForCurve(currentCurve)}" fill="none" stroke="#c56c24" stroke-width="3" />`;
+
+  const note = $("tone_plot_note");
+  if (note) {
+    const bassLabel = $("tone_bass_label")?.textContent || "Bass";
+    const midLabel = $("tone_mid_label")?.textContent || "Mid";
+    const trebleLabel = $("tone_treble_label")?.textContent || "Treble";
+    const presenceLabel = $("tone_presence_label")?.textContent || "Presence";
+    note.textContent =
+      `Approximate response of AmpStageStudio's modeled ${bassLabel}/${midLabel}/${trebleLabel}/${presenceLabel} controls. Useful for comparison, but not a schematic solver.`;
+  }
+
+  svg.innerHTML = markup;
+}
+
 function refreshEffectSchema() {
   const effect = $("effect")?.value || "none";
   const config = {
@@ -107,6 +284,7 @@ async function refreshControlSchema() {
   }
   $("preamp_schema_note").textContent =
     schema.note || "These labels reflect the current modeled controls.";
+  drawTonePlot();
 }
 
 function readStateFromInputs() {
@@ -149,6 +327,7 @@ function applyState(data) {
     if (outputSelect && data.output_device !== undefined) outputSelect.value = data.output_device;
   }
   refreshEffectSchema();
+  drawTonePlot();
   $("status").textContent = `Connected to ${data._control_file || "control file"}`;
 }
 
@@ -240,16 +419,23 @@ async function init() {
     applyState(stateData);
     await refreshControlSchema();
     refreshEffectSchema();
+    drawTonePlot();
     for (const key of stateKeys) {
       const el = $(key);
       if (!el) continue;
       el.addEventListener("input", () => {
         syncOutput(key, el.value);
         if (key === "effect") refreshEffectSchema();
+        if (["bass", "mid", "treble", "presence", "amp", "preamp"].includes(key)) {
+          drawTonePlot();
+        }
         scheduleSave();
       });
       el.addEventListener("change", () => {
         if (key === "effect") refreshEffectSchema();
+        if (["bass", "mid", "treble", "presence", "amp", "preamp"].includes(key)) {
+          drawTonePlot();
+        }
         scheduleSave();
       });
     }

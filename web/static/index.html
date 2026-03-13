@@ -83,6 +83,20 @@
           <label id="effect_clean_blend_row"><span id="effect_clean_blend_label">Clean Blend</span><input id="effect_clean_blend" type="range" min="0" max="1" step="0.01"><output id="effect_clean_blend_value"></output></label>
         </div>
       </section>
+
+      <section class="panel tone-plot-panel">
+        <div class="tone-plot-header">
+          <div>
+            <h2>Tone Stack Plot</h2>
+            <p id="tone_plot_note">Approximate response of AmpStageStudio's modeled tone controls. This is a comparison aid, not a schematic solver.</p>
+          </div>
+          <div class="tone-plot-legend">
+            <span><i class="legend-swatch legend-swatch-current"></i>Current</span>
+            <span><i class="legend-swatch legend-swatch-reference"></i>Noon</span>
+          </div>
+        </div>
+        <svg id="tone_plot" viewBox="0 0 760 280" preserveAspectRatio="none" aria-label="Tone stack response plot"></svg>
+      </section>
     </main>
     <script src="/app.js"></script>
   </body>
