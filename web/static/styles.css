@@ -116,11 +116,12 @@ h1, h2, p { margin: 0 0 10px; }
   gap: 14px;
   overflow-x: auto;
   padding-bottom: 4px;
+  scrollbar-width: thin;
 }
 
 .effect-block {
-  min-width: 210px;
-  flex: 0 0 210px;
+  min-width: 188px;
+  flex: 0 0 188px;
   padding: 14px;
   border-radius: 14px;
   border: 1px solid rgba(33, 22, 14, .22);
@@ -295,16 +296,18 @@ output {
   border: 1px solid rgba(33, 22, 14, .24);
 }
 
-@media (max-width: 720px) {
-  .tone-plot-header {
-    flex-direction: column;
-  }
-
+@media (max-width: 1120px) {
   .pedalboard-layout {
     grid-template-columns: 1fr;
   }
 
   .effect-inspector {
     position: static;
+  }
+}
+
+@media (max-width: 720px) {
+  .tone-plot-header {
+    flex-direction: column;
   }
 }
