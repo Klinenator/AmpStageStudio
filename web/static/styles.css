@@ -71,11 +71,20 @@ h1, h2, p { margin: 0 0 10px; }
   margin-top: 18px;
 }
 
-.pedalboard-layout {
+.effect-chain-header {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
   gap: 18px;
   align-items: start;
+  margin-bottom: 18px;
+}
+
+.effect-chain-header .tone-plot-header {
+  margin-bottom: 0;
+}
+
+.pedalboard-layout {
+  display: block;
 }
 
 .lane-stack {
@@ -351,6 +360,8 @@ h1, h2, p { margin: 0 0 10px; }
 
 .effect-inspector {
   position: static;
+  margin-left: auto;
+  width: 100%;
 }
 
 .inspector-header {
@@ -453,12 +464,8 @@ output {
 }
 
 @media (max-width: 1120px) {
-  .pedalboard-layout {
+  .effect-chain-header {
     grid-template-columns: 1fr;
-  }
-
-  .effect-inspector {
-    position: static;
   }
 }
 
