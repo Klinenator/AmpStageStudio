@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -7,11 +8,28 @@
 #include <csignal>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <thread>
+#include <vector>
+
+#include <cerrno>
+#include <cstring>
+#include <cstdio>
+
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <portaudio.h>
 #ifdef __linux__
@@ -47,8 +65,11 @@ struct Config {
   std::string input_device_name;
   std::string output_device_name;
   std::string control_file;
+  std::string http_host = "127.0.0.1";
   std::string alsa_input;
   std::string alsa_output;
+  int http_port = 0;
+  bool http_only = false;
   std::optional<double> drive_db;
   std::optional<double> level_db;
   std::optional<double> bright_db;
@@ -95,6 +116,811 @@ struct AppState {
   PowerTubeType applied_power_tube_type = PowerTubeType::k6V6;
 };
 
+std::string ToLower(std::string value);
+
+struct WebDevice {
+  std::string value;
+  std::string label;
+};
+
+struct AudioDeviceListing {
+  std::vector<WebDevice> input_devices;
+  std::vector<WebDevice> output_devices;
+  std::string backend = "portaudio";
+};
+
+struct HttpRequest {
+  std::string method;
+  std::string path;
+  std::map<std::string, std::string> headers;
+  std::string body;
+};
+
+std::string TrimString(std::string value) {
+  const auto not_space = [](unsigned char c) { return !std::isspace(c); };
+  value.erase(value.begin(),
+              std::find_if(value.begin(), value.end(), not_space));
+  value.erase(
+      std::find_if(value.rbegin(), value.rend(), not_space).base(),
+      value.end());
+  return value;
+}
+
+std::filesystem::path RepoRootFromArgv0(const char* argv0) {
+  std::error_code ec;
+  std::filesystem::path binary_path = std::filesystem::absolute(argv0, ec);
+  if (ec) {
+    binary_path = std::filesystem::current_path();
+  }
+  binary_path = std::filesystem::weakly_canonical(binary_path, ec);
+  if (ec) {
+    binary_path = std::filesystem::absolute(argv0);
+  }
+
+  std::filesystem::path parent = binary_path.parent_path();
+  if (parent.filename() == "build") {
+    return parent.parent_path();
+  }
+  return std::filesystem::current_path();
+}
+
+std::map<std::string, std::string> ParseKeyValueFile(
+    const std::filesystem::path& path) {
+  std::ifstream in(path);
+  if (!in) {
+    return {};
+  }
+
+  std::map<std::string, std::string> result;
+  std::string line;
+  while (std::getline(in, line)) {
+    const std::size_t comment_pos = line.find('#');
+    if (comment_pos != std::string::npos) {
+      line.resize(comment_pos);
+    }
+    line = TrimString(line);
+    if (line.empty()) {
+      continue;
+    }
+    const std::size_t equals_pos = line.find('=');
+    if (equals_pos == std::string::npos) {
+      continue;
+    }
+    result[TrimString(line.substr(0, equals_pos))] =
+        TrimString(line.substr(equals_pos + 1));
+  }
+  return result;
+}
+
+bool WriteKeyValueFile(const std::filesystem::path& path,
+                       const std::map<std::string, std::string>& data,
+                       std::string* error_out = nullptr) {
+  std::error_code ec;
+  std::filesystem::create_directories(path.parent_path(), ec);
+
+  const std::filesystem::path tmp_path = path.string() + ".tmp";
+  std::ofstream out(tmp_path, std::ios::trunc);
+  if (!out) {
+    if (error_out) {
+      *error_out = "Failed to write control file: " + path.string();
+    }
+    return false;
+  }
+
+  for (const auto& [key, value] : data) {
+    if (value.empty()) {
+      continue;
+    }
+    out << key << " = " << value << "\n";
+  }
+  out.close();
+  if (!out) {
+    if (error_out) {
+      *error_out = "Failed to flush control file: " + path.string();
+    }
+    return false;
+  }
+
+  std::filesystem::rename(tmp_path, path, ec);
+  if (ec) {
+    std::filesystem::remove(path, ec);
+    ec.clear();
+    std::filesystem::rename(tmp_path, path, ec);
+  }
+  if (ec) {
+    if (error_out) {
+      *error_out = "Failed to replace control file: " + path.string();
+    }
+    return false;
+  }
+  return true;
+}
+
+std::vector<std::string> ListProfiles(const std::filesystem::path& dir,
+                                      const std::string& extension) {
+  std::vector<std::string> names;
+  std::error_code ec;
+  for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+    if (ec) {
+      break;
+    }
+    if (!entry.is_regular_file()) {
+      continue;
+    }
+    const auto path = entry.path();
+    if (path.extension() == extension) {
+      names.push_back(path.stem().string());
+    }
+  }
+  std::sort(names.begin(), names.end());
+  return names;
+}
+
+std::map<std::string, std::string> DefaultControlSchema() {
+  return {
+      {"panel_title", "Preamp"},
+      {"drive_label", "Drive"},
+      {"level_label", "Level"},
+      {"bright_label", "Bright"},
+      {"bias_label", "Bias"},
+      {"bass_label", ""},
+      {"mid_label", ""},
+      {"treble_label", ""},
+      {"presence_label", ""},
+      {"input_hpf_hz", "60.0"},
+      {"note",
+       "These controls follow the current preamp family. Tone stack behavior is circuit-inspired, not an exact schematic solve."},
+  };
+}
+
+std::optional<std::string> ResolveSelectedPreampName(
+    const std::map<std::string, std::string>& state,
+    const std::filesystem::path& repo_root) {
+  auto preamp_it = state.find("preamp");
+  if (preamp_it != state.end() && !preamp_it->second.empty()) {
+    return preamp_it->second;
+  }
+
+  auto amp_it = state.find("amp");
+  if (amp_it == state.end() || amp_it->second.empty()) {
+    return std::nullopt;
+  }
+
+  const auto amp_profile =
+      ParseKeyValueFile(repo_root / "amps" / (amp_it->second + ".amp"));
+  auto preamp_name_it = amp_profile.find("preamp_name");
+  if (preamp_name_it == amp_profile.end() || preamp_name_it->second.empty()) {
+    return std::nullopt;
+  }
+  return preamp_name_it->second;
+}
+
+std::map<std::string, std::string> LoadControlSchema(
+    const std::map<std::string, std::string>& state,
+    const std::filesystem::path& repo_root) {
+  auto schema = DefaultControlSchema();
+  const auto preamp_name = ResolveSelectedPreampName(state, repo_root);
+  if (!preamp_name) {
+    return schema;
+  }
+
+  const auto profile =
+      ParseKeyValueFile(repo_root / "preamps" / (*preamp_name + ".preamp"));
+  if (profile.empty()) {
+    return schema;
+  }
+
+  const auto lookup = [&profile](const std::string& key,
+                                 const std::string& fallback = std::string()) {
+    const auto it = profile.find(key);
+    if (it == profile.end()) {
+      return fallback;
+    }
+    return it->second;
+  };
+
+  schema["panel_title"] = lookup("name", *preamp_name);
+  schema["drive_label"] = lookup("ui_drive_label", schema["drive_label"]);
+  schema["level_label"] = lookup("ui_level_label", schema["level_label"]);
+  schema["bright_label"] = lookup("ui_bright_label", schema["bright_label"]);
+  schema["bias_label"] = lookup("ui_bias_label", schema["bias_label"]);
+  schema["bass_label"] = lookup("ui_bass_label");
+  schema["mid_label"] = lookup("ui_mid_label");
+  schema["treble_label"] = lookup("ui_treble_label");
+  schema["presence_label"] = lookup("ui_presence_label");
+  schema["input_hpf_hz"] = lookup("input_hpf_hz", schema["input_hpf_hz"]);
+  return schema;
+}
+
+std::string JsonEscape(const std::string& value) {
+  std::string out;
+  out.reserve(value.size() + 8);
+  for (unsigned char c : value) {
+    switch (c) {
+      case '\\': out += "\\\\"; break;
+      case '"': out += "\\\""; break;
+      case '\b': out += "\\b"; break;
+      case '\f': out += "\\f"; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (c < 0x20) {
+          char buffer[7];
+          std::snprintf(buffer, sizeof(buffer), "\\u%04x", c);
+          out += buffer;
+        } else {
+          out.push_back(static_cast<char>(c));
+        }
+        break;
+    }
+  }
+  return out;
+}
+
+std::string JsonObjectFromMap(const std::map<std::string, std::string>& data) {
+  std::ostringstream out;
+  out << "{";
+  bool first = true;
+  for (const auto& [key, value] : data) {
+    if (!first) {
+      out << ",";
+    }
+    first = false;
+    out << "\"" << JsonEscape(key) << "\":"
+        << "\"" << JsonEscape(value) << "\"";
+  }
+  out << "}";
+  return out.str();
+}
+
+std::string JsonArrayFromStrings(const std::string& key,
+                                 const std::vector<std::string>& values) {
+  std::ostringstream out;
+  out << "{\"" << JsonEscape(key) << "\":[";
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i > 0) {
+      out << ",";
+    }
+    out << "\"" << JsonEscape(values[i]) << "\"";
+  }
+  out << "]}";
+  return out.str();
+}
+
+std::string JsonAudioDevices(const AudioDeviceListing& listing) {
+  auto write_device_array = [](std::ostringstream& out,
+                               const char* key,
+                               const std::vector<WebDevice>& devices) {
+    out << "\"" << key << "\":[";
+    for (std::size_t i = 0; i < devices.size(); ++i) {
+      if (i > 0) {
+        out << ",";
+      }
+      out << "{\"value\":\"" << JsonEscape(devices[i].value)
+          << "\",\"label\":\"" << JsonEscape(devices[i].label) << "\"}";
+    }
+    out << "]";
+  };
+
+  std::ostringstream out;
+  out << "{";
+  write_device_array(out, "input_devices", listing.input_devices);
+  out << ",";
+  write_device_array(out, "output_devices", listing.output_devices);
+  out << ",\"backend\":\"" << JsonEscape(listing.backend) << "\"}";
+  return out.str();
+}
+
+bool ParseJsonString(const std::string& text,
+                     std::size_t& pos,
+                     std::string& out) {
+  if (pos >= text.size() || text[pos] != '"') {
+    return false;
+  }
+  ++pos;
+  out.clear();
+  while (pos < text.size()) {
+    const char c = text[pos++];
+    if (c == '"') {
+      return true;
+    }
+    if (c != '\\') {
+      out.push_back(c);
+      continue;
+    }
+    if (pos >= text.size()) {
+      return false;
+    }
+    const char escaped = text[pos++];
+    switch (escaped) {
+      case '"': out.push_back('"'); break;
+      case '\\': out.push_back('\\'); break;
+      case '/': out.push_back('/'); break;
+      case 'b': out.push_back('\b'); break;
+      case 'f': out.push_back('\f'); break;
+      case 'n': out.push_back('\n'); break;
+      case 'r': out.push_back('\r'); break;
+      case 't': out.push_back('\t'); break;
+      default: out.push_back(escaped); break;
+    }
+  }
+  return false;
+}
+
+bool ParseFlatJsonObject(const std::string& body,
+                         std::map<std::string, std::string>& out) {
+  std::size_t pos = 0;
+  auto skip_space = [&]() {
+    while (pos < body.size() &&
+           std::isspace(static_cast<unsigned char>(body[pos]))) {
+      ++pos;
+    }
+  };
+
+  skip_space();
+  if (pos >= body.size() || body[pos] != '{') {
+    return false;
+  }
+  ++pos;
+  skip_space();
+  out.clear();
+  if (pos < body.size() && body[pos] == '}') {
+    return true;
+  }
+
+  while (pos < body.size()) {
+    std::string key;
+    if (!ParseJsonString(body, pos, key)) {
+      return false;
+    }
+    skip_space();
+    if (pos >= body.size() || body[pos] != ':') {
+      return false;
+    }
+    ++pos;
+    skip_space();
+
+    std::string value;
+    if (pos < body.size() && body[pos] == '"') {
+      if (!ParseJsonString(body, pos, value)) {
+        return false;
+      }
+    } else {
+      const std::size_t start = pos;
+      while (pos < body.size() && body[pos] != ',' && body[pos] != '}') {
+        ++pos;
+      }
+      value = TrimString(body.substr(start, pos - start));
+    }
+    out[key] = value;
+
+    skip_space();
+    if (pos >= body.size()) {
+      return false;
+    }
+    if (body[pos] == '}') {
+      return true;
+    }
+    if (body[pos] != ',') {
+      return false;
+    }
+    ++pos;
+    skip_space();
+  }
+  return false;
+}
+
+std::string MimeTypeForPath(const std::filesystem::path& path) {
+  if (path.extension() == ".html") {
+    return "text/html; charset=utf-8";
+  }
+  if (path.extension() == ".js") {
+    return "application/javascript; charset=utf-8";
+  }
+  if (path.extension() == ".css") {
+    return "text/css; charset=utf-8";
+  }
+  return "application/octet-stream";
+}
+
+std::optional<std::string> ReadTextCommandOutput(const std::string& command) {
+  FILE* pipe = popen(command.c_str(), "r");
+  if (!pipe) {
+    return std::nullopt;
+  }
+
+  std::string output;
+  std::array<char, 512> buffer{};
+  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe)) {
+    output += buffer.data();
+  }
+  const int status = pclose(pipe);
+  if (status != 0) {
+    return std::nullopt;
+  }
+  return output;
+}
+
+std::vector<WebDevice> ListAlsaDevices(const std::string& command) {
+  const auto output = ReadTextCommandOutput(command + " -l");
+  if (!output) {
+    return {};
+  }
+
+  const std::regex pattern(
+      R"(^card\s+(\d+):\s+([^\s]+)\s+\[(.*?)\],\s+device\s+(\d+):\s+(.*)$)");
+  std::vector<WebDevice> devices;
+  std::istringstream in(*output);
+  std::string line;
+  while (std::getline(in, line)) {
+    std::smatch match;
+    const std::string trimmed = TrimString(line);
+    if (!std::regex_match(trimmed, match, pattern)) {
+      continue;
+    }
+    WebDevice device;
+    device.value = "plughw:" + match.str(1) + "," + match.str(4);
+    device.label = device.value + " - " + match.str(3) + " (" + match.str(2) + ")";
+    if (!match.str(5).empty()) {
+      device.label += " - " + match.str(5);
+    }
+    devices.push_back(device);
+  }
+  return devices;
+}
+
+AudioDeviceListing ListAudioDevices() {
+  AudioDeviceListing listing;
+#ifdef __linux__
+  listing.backend = "alsa";
+  listing.input_devices = ListAlsaDevices("arecord");
+  listing.output_devices = ListAlsaDevices("aplay");
+#else
+  listing.backend = "portaudio";
+  const int count = Pa_GetDeviceCount();
+  for (int i = 0; i < count; ++i) {
+    const PaDeviceInfo* info = Pa_GetDeviceInfo(i);
+    if (!info) {
+      continue;
+    }
+    WebDevice device;
+    device.value = info->name ? info->name : "";
+    device.label = device.value;
+    if (info->maxInputChannels >= kInputChannels) {
+      listing.input_devices.push_back(device);
+    }
+    if (info->maxOutputChannels >= kOutputChannels) {
+      listing.output_devices.push_back(device);
+    }
+  }
+#endif
+  return listing;
+}
+
+class EmbeddedHttpServer {
+public:
+  EmbeddedHttpServer(std::filesystem::path repo_root,
+                     std::filesystem::path control_path,
+                     std::string host,
+                     int port,
+                     std::mutex* control_file_mutex)
+      : repo_root_(std::move(repo_root)),
+        static_dir_(repo_root_ / "web" / "static"),
+        control_path_(std::move(control_path)),
+        host_(std::move(host)),
+        port_(port),
+        control_file_mutex_(control_file_mutex) {}
+
+  ~EmbeddedHttpServer() {
+    Stop();
+  }
+
+  bool Start() {
+    if (port_ <= 0) {
+      return true;
+    }
+
+    struct addrinfo hints {};
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE;
+
+    struct addrinfo* result = nullptr;
+    const std::string port_string = std::to_string(port_);
+    const int gai = getaddrinfo(host_.c_str(), port_string.c_str(), &hints, &result);
+    if (gai != 0) {
+      std::cerr << "HTTP server getaddrinfo failed: " << gai_strerror(gai) << "\n";
+      return false;
+    }
+
+    for (struct addrinfo* candidate = result; candidate; candidate = candidate->ai_next) {
+      const int fd = ::socket(candidate->ai_family, candidate->ai_socktype, candidate->ai_protocol);
+      if (fd < 0) {
+        continue;
+      }
+      int reuse = 1;
+      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+      if (::bind(fd, candidate->ai_addr, candidate->ai_addrlen) == 0 &&
+          ::listen(fd, 16) == 0) {
+        listen_fd_ = fd;
+        break;
+      }
+      ::close(fd);
+    }
+    freeaddrinfo(result);
+
+    if (listen_fd_ < 0) {
+      std::cerr << "Failed to bind HTTP server on " << host_ << ":" << port_ << "\n";
+      return false;
+    }
+
+    running_ = true;
+    thread_ = std::thread([this]() { Run(); });
+    return true;
+  }
+
+  void Stop() {
+    if (!running_) {
+      return;
+    }
+    running_ = false;
+    if (listen_fd_ >= 0) {
+      ::shutdown(listen_fd_, SHUT_RDWR);
+      ::close(listen_fd_);
+      listen_fd_ = -1;
+    }
+    if (thread_.joinable()) {
+      thread_.join();
+    }
+  }
+
+private:
+  void Run() {
+    while (running_) {
+      fd_set readfds;
+      FD_ZERO(&readfds);
+      FD_SET(listen_fd_, &readfds);
+      struct timeval timeout {};
+      timeout.tv_sec = 0;
+      timeout.tv_usec = 200000;
+      const int ready = select(listen_fd_ + 1, &readfds, nullptr, nullptr, &timeout);
+      if (ready <= 0) {
+        continue;
+      }
+      sockaddr_storage client_addr {};
+      socklen_t client_len = sizeof(client_addr);
+      const int client_fd =
+          accept(listen_fd_, reinterpret_cast<sockaddr*>(&client_addr), &client_len);
+      if (client_fd < 0) {
+        continue;
+      }
+      HandleClient(client_fd);
+    }
+  }
+
+  void HandleClient(int client_fd) {
+    HttpRequest request;
+    if (!ReadRequest(client_fd, request)) {
+      SendResponse(client_fd, 400, "Bad Request", "text/plain; charset=utf-8",
+                   "Bad Request");
+      ::close(client_fd);
+      return;
+    }
+
+    if (request.method == "GET") {
+      HandleGet(client_fd, request.path);
+    } else if (request.method == "POST") {
+      HandlePost(client_fd, request.path, request.body);
+    } else {
+      SendResponse(client_fd, 405, "Method Not Allowed",
+                   "text/plain; charset=utf-8", "Method Not Allowed");
+    }
+
+    ::close(client_fd);
+  }
+
+  bool ReadRequest(int client_fd, HttpRequest& request) {
+    std::string raw;
+    std::array<char, 4096> buffer{};
+    std::size_t header_end = std::string::npos;
+    while ((header_end = raw.find("\r\n\r\n")) == std::string::npos) {
+      const ssize_t bytes = recv(client_fd, buffer.data(), buffer.size(), 0);
+      if (bytes <= 0) {
+        return false;
+      }
+      raw.append(buffer.data(), static_cast<std::size_t>(bytes));
+      if (raw.size() > 1 << 20) {
+        return false;
+      }
+    }
+
+    const std::size_t body_start = header_end + 4;
+    std::istringstream headers(raw.substr(0, header_end));
+    std::string request_line;
+    if (!std::getline(headers, request_line)) {
+      return false;
+    }
+    if (!request_line.empty() && request_line.back() == '\r') {
+      request_line.pop_back();
+    }
+
+    std::istringstream request_line_stream(request_line);
+    if (!(request_line_stream >> request.method >> request.path)) {
+      return false;
+    }
+
+    std::string line;
+    std::size_t content_length = 0;
+    while (std::getline(headers, line)) {
+      if (!line.empty() && line.back() == '\r') {
+        line.pop_back();
+      }
+      const std::size_t colon = line.find(':');
+      if (colon == std::string::npos) {
+        continue;
+      }
+      const std::string key = ToLower(TrimString(line.substr(0, colon)));
+      const std::string value = TrimString(line.substr(colon + 1));
+      request.headers[key] = value;
+      if (key == "content-length") {
+        content_length = static_cast<std::size_t>(std::strtoull(value.c_str(), nullptr, 10));
+      }
+    }
+
+    request.body = raw.substr(body_start);
+    while (request.body.size() < content_length) {
+      const ssize_t bytes = recv(client_fd, buffer.data(), buffer.size(), 0);
+      if (bytes <= 0) {
+        return false;
+      }
+      request.body.append(buffer.data(), static_cast<std::size_t>(bytes));
+    }
+    if (request.body.size() > content_length) {
+      request.body.resize(content_length);
+    }
+
+    const std::size_t query_pos = request.path.find('?');
+    if (query_pos != std::string::npos) {
+      request.path.resize(query_pos);
+    }
+    return true;
+  }
+
+  void HandleGet(int client_fd, const std::string& path) {
+    if (path == "/api/state") {
+      auto state = LoadStateMap();
+      state["_control_file"] = control_path_.string();
+      SendJson(client_fd, JsonObjectFromMap(state));
+      return;
+    }
+    if (path == "/api/amps") {
+      SendJson(client_fd,
+               JsonArrayFromStrings("amps", ListProfiles(repo_root_ / "amps", ".amp")));
+      return;
+    }
+    if (path == "/api/preamps") {
+      SendJson(client_fd,
+               JsonArrayFromStrings("preamps", ListProfiles(repo_root_ / "preamps", ".preamp")));
+      return;
+    }
+    if (path == "/api/power-tubes") {
+      SendJson(client_fd, JsonArrayFromStrings("power_tubes",
+                                               {"6V6", "6L6", "EL34", "EL84"}));
+      return;
+    }
+    if (path == "/api/audio-devices") {
+      SendJson(client_fd, JsonAudioDevices(ListAudioDevices()));
+      return;
+    }
+    if (path == "/api/control-schema") {
+      const auto state = LoadStateMap();
+      SendJson(client_fd, JsonObjectFromMap(LoadControlSchema(state, repo_root_)));
+      return;
+    }
+    if (path == "/api/health") {
+      SendJson(client_fd, "{\"ok\":true}");
+      return;
+    }
+
+    std::filesystem::path file_path;
+    if (path == "/" || path == "/index.html") {
+      file_path = static_dir_ / "index.html";
+    } else if (path == "/app.js") {
+      file_path = static_dir_ / "app.js";
+    } else if (path == "/styles.css") {
+      file_path = static_dir_ / "styles.css";
+    } else {
+      SendResponse(client_fd, 404, "Not Found", "text/plain; charset=utf-8", "Not Found");
+      return;
+    }
+
+    std::ifstream in(file_path, std::ios::binary);
+    if (!in) {
+      SendResponse(client_fd, 404, "Not Found", "text/plain; charset=utf-8", "Not Found");
+      return;
+    }
+    std::ostringstream data;
+    data << in.rdbuf();
+    SendResponse(client_fd, 200, "OK", MimeTypeForPath(file_path), data.str());
+  }
+
+  void HandlePost(int client_fd,
+                  const std::string& path,
+                  const std::string& body) {
+    if (path != "/api/state") {
+      SendResponse(client_fd, 404, "Not Found", "text/plain; charset=utf-8", "Not Found");
+      return;
+    }
+
+    std::map<std::string, std::string> updates;
+    if (!ParseFlatJsonObject(body, updates)) {
+      SendResponse(client_fd, 400, "Bad Request",
+                   "text/plain; charset=utf-8", "Invalid JSON");
+      return;
+    }
+
+    auto current = LoadStateMap();
+    for (const auto& [key, value] : updates) {
+      if (!key.empty() && key[0] == '_') {
+        continue;
+      }
+      current[key] = value;
+    }
+
+    std::string error;
+    if (!SaveStateMap(current, &error)) {
+      SendResponse(client_fd, 500, "Internal Server Error",
+                   "text/plain; charset=utf-8", error);
+      return;
+    }
+    current["_control_file"] = control_path_.string();
+    SendJson(client_fd, JsonObjectFromMap(current));
+  }
+
+  std::map<std::string, std::string> LoadStateMap() {
+    std::scoped_lock lock(*control_file_mutex_);
+    return ParseKeyValueFile(control_path_);
+  }
+
+  bool SaveStateMap(const std::map<std::string, std::string>& data,
+                    std::string* error_out) {
+    std::scoped_lock lock(*control_file_mutex_);
+    return WriteKeyValueFile(control_path_, data, error_out);
+  }
+
+  void SendJson(int client_fd, const std::string& body) {
+    SendResponse(client_fd, 200, "OK", "application/json; charset=utf-8", body);
+  }
+
+  void SendResponse(int client_fd,
+                    int status_code,
+                    const char* status_text,
+                    const std::string& content_type,
+                    const std::string& body) {
+    std::ostringstream response;
+    response << "HTTP/1.1 " << status_code << " " << status_text << "\r\n"
+             << "Content-Type: " << content_type << "\r\n"
+             << "Content-Length: " << body.size() << "\r\n"
+             << "Cache-Control: no-store, no-cache, must-revalidate, max-age=0\r\n"
+             << "Pragma: no-cache\r\n"
+             << "Connection: close\r\n\r\n"
+             << body;
+    const std::string text = response.str();
+    send(client_fd, text.data(), text.size(), 0);
+  }
+
+  std::filesystem::path repo_root_;
+  std::filesystem::path static_dir_;
+  std::filesystem::path control_path_;
+  std::string host_;
+  int port_ = 0;
+  int listen_fd_ = -1;
+  std::atomic<bool> running_{false};
+  std::thread thread_;
+  std::mutex* control_file_mutex_ = nullptr;
+};
+
 void OnSignal(int) {
   g_running = false;
 }
@@ -113,6 +939,9 @@ void PrintUsage(const char* program_name) {
       << "  --input-device NAME      PortAudio input device substring\n"
       << "  --output-device NAME     PortAudio output device substring\n"
       << "  --control-file PATH      Live control file to poll for updates\n"
+      << "  --http-host HOST         Embedded web server host, default 127.0.0.1\n"
+      << "  --http-port PORT         Embedded web server port, default disabled\n"
+      << "  --http-only              Serve the UI/API without opening audio I/O\n"
       << "  --alsa-device NAME       Linux ALSA device for in/out, e.g. plughw:2,0\n"
       << "  --alsa-input NAME        Linux ALSA input device\n"
       << "  --alsa-output NAME       Linux ALSA output device\n"
@@ -193,6 +1022,33 @@ bool ParseStringArg(const std::string& arg,
   if (arg.rfind(prefix, 0) == 0) {
     value_out = arg.substr(prefix.size());
     return true;
+  }
+  return false;
+}
+
+bool ParseIntArg(const std::string& arg,
+                 const std::string& flag,
+                 int& index,
+                 int argc,
+                 char** argv,
+                 int& value_out) {
+  const std::string prefix = flag + "=";
+  try {
+    if (arg == flag) {
+      if (index + 1 >= argc) {
+        std::cerr << "Missing value for " << flag << "\n";
+        return false;
+      }
+      value_out = std::stoi(argv[++index]);
+      return true;
+    }
+    if (arg.rfind(prefix, 0) == 0) {
+      value_out = std::stoi(arg.substr(prefix.size()));
+      return true;
+    }
+  } catch (const std::exception&) {
+    std::cerr << "Invalid value for " << flag << "\n";
+    return false;
   }
   return false;
 }
@@ -565,6 +1421,7 @@ int AudioCallback(const void* input_buffer,
 int main(int argc, char** argv) {
   Config config;
   bool list_devices = false;
+  const std::filesystem::path repo_root = RepoRootFromArgv0(argv[0]);
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -574,6 +1431,10 @@ int main(int argc, char** argv) {
     }
     if (arg == "--list-devices") {
       list_devices = true;
+      continue;
+    }
+    if (arg == "--http-only") {
+      config.http_only = true;
       continue;
     }
     if (ParseStringArg(arg, "--amp", i, argc, argv, config.amp_name) ||
@@ -586,9 +1447,11 @@ int main(int argc, char** argv) {
         ParseStringArg(arg, "--input-device", i, argc, argv, config.input_device_name) ||
         ParseStringArg(arg, "--output-device", i, argc, argv, config.output_device_name) ||
         ParseStringArg(arg, "--control-file", i, argc, argv, config.control_file) ||
+        ParseStringArg(arg, "--http-host", i, argc, argv, config.http_host) ||
         ParseStringArg(arg, "--alsa-device", i, argc, argv, config.alsa_input) ||
         ParseStringArg(arg, "--alsa-input", i, argc, argv, config.alsa_input) ||
         ParseStringArg(arg, "--alsa-output", i, argc, argv, config.alsa_output) ||
+        ParseIntArg(arg, "--http-port", i, argc, argv, config.http_port) ||
         ParseOptionalDoubleArg(arg, "--drive-db", i, argc, argv, config.drive_db) ||
         ParseOptionalDoubleArg(arg, "--level-db", i, argc, argv, config.level_db) ||
         ParseOptionalDoubleArg(arg, "--bright-db", i, argc, argv, config.bright_db) ||
@@ -633,7 +1496,20 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  if (config.http_port < 0 || config.http_port > 65535) {
+    std::cerr << "HTTP port must be between 0 and 65535\n";
+    return 1;
+  }
+
+  if (config.http_port > 0 && config.control_file.empty()) {
+    config.control_file = (repo_root / "web" / "live_state.cfg").string();
+  }
+  if (!config.control_file.empty()) {
+    config.control_file = std::filesystem::absolute(config.control_file).string();
+  }
+
   std::signal(SIGINT, OnSignal);
+  std::mutex control_file_mutex;
 
   const auto profile = ResolveAmpProfile(config);
   if (!profile) {
@@ -644,7 +1520,13 @@ int main(int argc, char** argv) {
   if (!config.control_file.empty() && std::filesystem::exists(config.control_file)) {
     LiveControlState loaded_state;
     std::string error;
-    if (LoadLiveControlState(config.control_file, loaded_state, &error)) {
+    {
+      std::scoped_lock lock(control_file_mutex);
+      if (!LoadLiveControlState(config.control_file, loaded_state, &error)) {
+        loaded_state = LiveControlState{};
+      }
+    }
+    if (error.empty()) {
       live_state = loaded_state;
 #ifdef __linux__
       if (config.alsa_input.empty() && loaded_state.alsa_input) {
@@ -683,7 +1565,11 @@ int main(int argc, char** argv) {
 
   if (!config.control_file.empty() && !std::filesystem::exists(config.control_file)) {
     std::string error;
-    if (!SaveLiveControlState(config.control_file, BuildLiveControlState(*settings), &error)) {
+    {
+      std::scoped_lock lock(control_file_mutex);
+      SaveLiveControlState(config.control_file, BuildLiveControlState(*settings), &error);
+    }
+    if (!error.empty()) {
       std::cerr << error << "\n";
     }
   }
@@ -704,144 +1590,178 @@ int main(int argc, char** argv) {
     return 0;
   }
 
-  PaStreamParameters input_params{};
-  PaStreamParameters output_params{};
-  input_params.channelCount = kInputChannels;
-  input_params.sampleFormat = paInt16;
-  output_params.channelCount = kOutputChannels;
-  output_params.sampleFormat = paInt16;
-
-  std::string selected_device_label;
-#ifdef __linux__
-  PaAlsaStreamInfo alsa_input_info{};
-  PaAlsaStreamInfo alsa_output_info{};
-  const bool use_explicit_alsa = !config.alsa_input.empty() || !config.alsa_output.empty();
-  if (use_explicit_alsa) {
-    if (config.alsa_input.empty()) {
-      config.alsa_input = config.alsa_output;
-    }
-    if (config.alsa_output.empty()) {
-      config.alsa_output = config.alsa_input;
-    }
-
-    PaAlsa_InitializeStreamInfo(&alsa_input_info);
-    PaAlsa_InitializeStreamInfo(&alsa_output_info);
-    alsa_input_info.deviceString = config.alsa_input.c_str();
-    alsa_output_info.deviceString = config.alsa_output.c_str();
-
-    input_params.device = paUseHostApiSpecificDeviceSpecification;
-    input_params.suggestedLatency = 0.01;
-    input_params.hostApiSpecificStreamInfo = &alsa_input_info;
-
-    output_params.device = paUseHostApiSpecificDeviceSpecification;
-    output_params.suggestedLatency = 0.01;
-    output_params.hostApiSpecificStreamInfo = &alsa_output_info;
-
-    selected_device_label =
-        "ALSA in=" + config.alsa_input + " out=" + config.alsa_output;
-  } else
-#endif
-  {
-    const bool use_split_devices =
-        !config.input_device_name.empty() || !config.output_device_name.empty();
-    if (use_split_devices) {
-      const std::string input_needle =
-          config.input_device_name.empty() ? config.device_name : config.input_device_name;
-      const std::string output_needle =
-          config.output_device_name.empty() ? config.device_name : config.output_device_name;
-
-      const PaDeviceIndex input_device = FindInputDevice(input_needle);
-      if (input_device == paNoDevice) {
-        std::cerr << "Could not find input device matching \"" << input_needle << "\"\n";
-        PrintDevices();
-        CheckPa(Pa_Terminate(), "Pa_Terminate");
-        return 1;
-      }
-
-      const PaDeviceIndex output_device = FindOutputDevice(output_needle);
-      if (output_device == paNoDevice) {
-        std::cerr << "Could not find output device matching \"" << output_needle << "\"\n";
-        PrintDevices();
-        CheckPa(Pa_Terminate(), "Pa_Terminate");
-        return 1;
-      }
-
-      const PaDeviceInfo* input_info = Pa_GetDeviceInfo(input_device);
-      const PaDeviceInfo* output_info = Pa_GetDeviceInfo(output_device);
-      input_params.device = input_device;
-      input_params.suggestedLatency = input_info->defaultLowInputLatency;
-      output_params.device = output_device;
-      output_params.suggestedLatency = output_info->defaultLowOutputLatency;
-      selected_device_label =
-          "input=" + std::string(input_info->name) +
-          ", output=" + std::string(output_info->name);
-    } else {
-      const PaDeviceIndex device = FindDuplexDevice(config.device_name);
-      if (device == paNoDevice) {
-        std::cerr << "Could not find duplex device matching \"" << config.device_name << "\"\n";
-        PrintDevices();
-        CheckPa(Pa_Terminate(), "Pa_Terminate");
-        return 1;
-      }
-
-      const PaDeviceInfo* info = Pa_GetDeviceInfo(device);
-      input_params.device = device;
-      input_params.suggestedLatency = info->defaultLowInputLatency;
-      output_params.device = device;
-      output_params.suggestedLatency = info->defaultLowOutputLatency;
-      selected_device_label = info->name;
-    }
-  }
-
-  const PaError support =
-      Pa_IsFormatSupported(&input_params, &output_params, kSampleRateHz);
-  if (support != paFormatIsSupported) {
-    std::cerr << "Device \"" << selected_device_label << "\" does not support "
-              << kSampleRateHz << " Hz with "
-              << kInputChannels << " input / "
-              << kOutputChannels << " output int16.\n";
-    CheckPa(Pa_Terminate(), "Pa_Terminate");
-    return 1;
-  }
-
   PaStream* stream = nullptr;
-  CheckPa(Pa_OpenStream(&stream,
-                        &input_params,
-                        &output_params,
-                        kSampleRateHz,
-                        kFramesPerBuffer,
-                        paNoFlag,
-                        AudioCallback,
-                        &state),
-          "Pa_OpenStream");
+  std::string selected_device_label = "http-only";
+
+  if (!config.http_only) {
+    PaStreamParameters input_params{};
+    PaStreamParameters output_params{};
+    input_params.channelCount = kInputChannels;
+    input_params.sampleFormat = paInt16;
+    output_params.channelCount = kOutputChannels;
+    output_params.sampleFormat = paInt16;
 
 #ifdef __linux__
-  if (!config.alsa_input.empty() || !config.alsa_output.empty()) {
-    PaAlsa_EnableRealtimeScheduling(stream, 1);
-  }
+    PaAlsaStreamInfo alsa_input_info{};
+    PaAlsaStreamInfo alsa_output_info{};
+    const bool use_explicit_alsa = !config.alsa_input.empty() || !config.alsa_output.empty();
+    if (use_explicit_alsa) {
+      if (config.alsa_input.empty()) {
+        config.alsa_input = config.alsa_output;
+      }
+      if (config.alsa_output.empty()) {
+        config.alsa_output = config.alsa_input;
+      }
+
+      PaAlsa_InitializeStreamInfo(&alsa_input_info);
+      PaAlsa_InitializeStreamInfo(&alsa_output_info);
+      alsa_input_info.deviceString = config.alsa_input.c_str();
+      alsa_output_info.deviceString = config.alsa_output.c_str();
+
+      input_params.device = paUseHostApiSpecificDeviceSpecification;
+      input_params.suggestedLatency = 0.01;
+      input_params.hostApiSpecificStreamInfo = &alsa_input_info;
+
+      output_params.device = paUseHostApiSpecificDeviceSpecification;
+      output_params.suggestedLatency = 0.01;
+      output_params.hostApiSpecificStreamInfo = &alsa_output_info;
+
+      selected_device_label =
+          "ALSA in=" + config.alsa_input + " out=" + config.alsa_output;
+    } else
+#endif
+    {
+      const bool use_split_devices =
+          !config.input_device_name.empty() || !config.output_device_name.empty();
+      if (use_split_devices) {
+        const std::string input_needle =
+            config.input_device_name.empty() ? config.device_name : config.input_device_name;
+        const std::string output_needle =
+            config.output_device_name.empty() ? config.device_name : config.output_device_name;
+
+        const PaDeviceIndex input_device = FindInputDevice(input_needle);
+        if (input_device == paNoDevice) {
+          std::cerr << "Could not find input device matching \"" << input_needle << "\"\n";
+          PrintDevices();
+          CheckPa(Pa_Terminate(), "Pa_Terminate");
+          return 1;
+        }
+
+        const PaDeviceIndex output_device = FindOutputDevice(output_needle);
+        if (output_device == paNoDevice) {
+          std::cerr << "Could not find output device matching \"" << output_needle << "\"\n";
+          PrintDevices();
+          CheckPa(Pa_Terminate(), "Pa_Terminate");
+          return 1;
+        }
+
+        const PaDeviceInfo* input_info = Pa_GetDeviceInfo(input_device);
+        const PaDeviceInfo* output_info = Pa_GetDeviceInfo(output_device);
+        input_params.device = input_device;
+        input_params.suggestedLatency = input_info->defaultLowInputLatency;
+        output_params.device = output_device;
+        output_params.suggestedLatency = output_info->defaultLowOutputLatency;
+        selected_device_label =
+            "input=" + std::string(input_info->name) +
+            ", output=" + std::string(output_info->name);
+      } else {
+        const PaDeviceIndex device = FindDuplexDevice(config.device_name);
+        if (device == paNoDevice) {
+          std::cerr << "Could not find duplex device matching \"" << config.device_name << "\"\n";
+          PrintDevices();
+          CheckPa(Pa_Terminate(), "Pa_Terminate");
+          return 1;
+        }
+
+        const PaDeviceInfo* info = Pa_GetDeviceInfo(device);
+        input_params.device = device;
+        input_params.suggestedLatency = info->defaultLowInputLatency;
+        output_params.device = device;
+        output_params.suggestedLatency = info->defaultLowOutputLatency;
+        selected_device_label = info->name;
+      }
+    }
+
+    const PaError support =
+        Pa_IsFormatSupported(&input_params, &output_params, kSampleRateHz);
+    if (support != paFormatIsSupported) {
+      std::cerr << "Device \"" << selected_device_label << "\" does not support "
+                << kSampleRateHz << " Hz with "
+                << kInputChannels << " input / "
+                << kOutputChannels << " output int16.\n";
+      CheckPa(Pa_Terminate(), "Pa_Terminate");
+      return 1;
+    }
+
+    CheckPa(Pa_OpenStream(&stream,
+                          &input_params,
+                          &output_params,
+                          kSampleRateHz,
+                          kFramesPerBuffer,
+                          paNoFlag,
+                          AudioCallback,
+                          &state),
+            "Pa_OpenStream");
+
+#ifdef __linux__
+    if (!config.alsa_input.empty() || !config.alsa_output.empty()) {
+      PaAlsa_EnableRealtimeScheduling(stream, 1);
+    }
 #endif
 
-  CheckPa(Pa_StartStream(stream), "Pa_StartStream");
+    CheckPa(Pa_StartStream(stream), "Pa_StartStream");
+  }
 
-  std::cout << "Running on " << selected_device_label
-            << " at " << kSampleRateHz
-            << " Hz, amp=" << settings->amp_name
+  std::optional<EmbeddedHttpServer> http_server;
+  if (config.http_port > 0) {
+    http_server.emplace(
+        repo_root, config.control_file, config.http_host, config.http_port,
+        &control_file_mutex);
+    if (!http_server->Start()) {
+      if (stream) {
+        CheckPa(Pa_StopStream(stream), "Pa_StopStream");
+        CheckPa(Pa_CloseStream(stream), "Pa_CloseStream");
+      }
+      CheckPa(Pa_Terminate(), "Pa_Terminate");
+      return 1;
+    }
+  }
+
+  std::cout << "Running "
+            << (config.http_only ? "in HTTP-only mode"
+                                 : "on " + selected_device_label +
+                                       " at " + std::to_string(kSampleRateHz) + " Hz")
+            << ", amp=" << settings->amp_name
             << ", preamp=" << settings->preamp_name
             << (settings->has_power_stage
                     ? std::string(", power=") + PowerTubeTypeName(settings->power_tube_type)
                     : std::string())
             << ", effect=" << EffectTypeName(settings->effect)
             << ". Press Ctrl+C to quit.\n";
+  if (http_server) {
+    std::cout << "Serving UI on http://" << config.http_host << ":"
+              << config.http_port << " using control file "
+              << config.control_file << "\n";
+  }
 
-  while (g_running && Pa_IsStreamActive(stream) == 1) {
+  while (g_running && (config.http_only || Pa_IsStreamActive(stream) == 1)) {
     if (!config.control_file.empty() && std::filesystem::exists(config.control_file)) {
       static std::filesystem::file_time_type last_write_time;
-      const auto current_write_time = std::filesystem::last_write_time(config.control_file);
+      std::filesystem::file_time_type current_write_time;
+      {
+        std::scoped_lock lock(control_file_mutex);
+        current_write_time = std::filesystem::last_write_time(config.control_file);
+      }
       if (current_write_time != last_write_time) {
         last_write_time = current_write_time;
         LiveControlState loaded_state;
         std::string error;
-        if (LoadLiveControlState(config.control_file, loaded_state, &error)) {
+        bool loaded = false;
+        {
+          std::scoped_lock lock(control_file_mutex);
+          loaded = LoadLiveControlState(config.control_file, loaded_state, &error);
+        }
+        if (loaded) {
           auto next_settings = ResolveRuntimeSettings(*profile, config, loaded_state);
           std::atomic_store(&state.settings, next_settings);
         } else {
@@ -852,8 +1772,14 @@ int main(int argc, char** argv) {
     Pa_Sleep(100);
   }
 
-  CheckPa(Pa_StopStream(stream), "Pa_StopStream");
-  CheckPa(Pa_CloseStream(stream), "Pa_CloseStream");
+  if (http_server) {
+    http_server->Stop();
+  }
+
+  if (stream) {
+    CheckPa(Pa_StopStream(stream), "Pa_StopStream");
+    CheckPa(Pa_CloseStream(stream), "Pa_CloseStream");
+  }
   CheckPa(Pa_Terminate(), "Pa_Terminate");
   return 0;
 }
