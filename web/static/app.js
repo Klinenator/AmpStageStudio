@@ -1,8 +1,6 @@
 const stateKeys = [
   "amp",
   "preamp",
-  "input_device",
-  "output_device",
   "power_tube_type",
   "effect",
   "drive_db",
@@ -19,6 +17,7 @@ const stateKeys = [
 ];
 
 let saveTimer = null;
+let audioBackend = "portaudio";
 
 function $(id) {
   return document.getElementById(id);
@@ -42,6 +41,19 @@ function readStateFromInputs() {
     if (!el) continue;
     payload[key] = el.value;
   }
+  const inputSelect = $("input_device_select");
+  const outputSelect = $("output_device_select");
+  if (audioBackend === "alsa") {
+    payload.alsa_input = inputSelect ? inputSelect.value : "";
+    payload.alsa_output = outputSelect ? outputSelect.value : "";
+    payload.input_device = "";
+    payload.output_device = "";
+  } else {
+    payload.input_device = inputSelect ? inputSelect.value : "";
+    payload.output_device = outputSelect ? outputSelect.value : "";
+    payload.alsa_input = "";
+    payload.alsa_output = "";
+  }
   return payload;
 }
 
@@ -51,6 +63,15 @@ function applyState(data) {
     if (!el || data[key] === undefined) continue;
     el.value = data[key];
     syncOutput(key, data[key]);
+  }
+  const inputSelect = $("input_device_select");
+  const outputSelect = $("output_device_select");
+  if (audioBackend === "alsa") {
+    if (inputSelect && data.alsa_input !== undefined) inputSelect.value = data.alsa_input;
+    if (outputSelect && data.alsa_output !== undefined) outputSelect.value = data.alsa_output;
+  } else {
+    if (inputSelect && data.input_device !== undefined) inputSelect.value = data.input_device;
+    if (outputSelect && data.output_device !== undefined) outputSelect.value = data.output_device;
   }
   $("status").textContent = `Connected to ${data._control_file || "control file"}`;
 }
@@ -90,10 +111,14 @@ async function init() {
     $("amp").replaceChildren();
     $("preamp").replaceChildren();
     $("power_tube_type").replaceChildren();
-    $("input_device").replaceChildren();
-    $("output_device").replaceChildren();
+    $("input_device_select").replaceChildren();
+    $("output_device_select").replaceChildren();
 
-    for (const id of ["input_device", "output_device"]) {
+    audioBackend = audioDevicesData.backend || "portaudio";
+    $("input_device_label").textContent = audioBackend === "alsa" ? "ALSA Input" : "Input Device";
+    $("output_device_label").textContent = audioBackend === "alsa" ? "ALSA Output" : "Output Device";
+
+    for (const id of ["input_device_select", "output_device_select"]) {
       const option = document.createElement("option");
       option.value = "";
       option.textContent = "(use current CLI/default)";
@@ -121,18 +146,18 @@ async function init() {
       $("power_tube_type").appendChild(option);
     }
 
-    for (const name of audioDevicesData.input_devices || []) {
+    for (const device of audioDevicesData.input_devices || []) {
       const option = document.createElement("option");
-      option.value = name;
-      option.textContent = name;
-      $("input_device").appendChild(option);
+      option.value = device.value;
+      option.textContent = device.label;
+      $("input_device_select").appendChild(option);
     }
 
-    for (const name of audioDevicesData.output_devices || []) {
+    for (const device of audioDevicesData.output_devices || []) {
       const option = document.createElement("option");
-      option.value = name;
-      option.textContent = name;
-      $("output_device").appendChild(option);
+      option.value = device.value;
+      option.textContent = device.label;
+      $("output_device_select").appendChild(option);
     }
 
     applyState(stateData);
@@ -145,6 +170,8 @@ async function init() {
       });
       el.addEventListener("change", scheduleSave);
     }
+    $("input_device_select").addEventListener("change", scheduleSave);
+    $("output_device_select").addEventListener("change", scheduleSave);
   } catch (error) {
     $("status").textContent = `Failed to load UI: ${error.message}`;
   }

@@ -587,6 +587,20 @@ int main(int argc, char** argv) {
     std::string error;
     if (LoadLiveControlState(config.control_file, loaded_state, &error)) {
       live_state = loaded_state;
+#ifdef __linux__
+      if (config.alsa_input.empty() && loaded_state.alsa_input) {
+        config.alsa_input = *loaded_state.alsa_input;
+      }
+      if (config.alsa_output.empty() && loaded_state.alsa_output) {
+        config.alsa_output = *loaded_state.alsa_output;
+      }
+      if (config.alsa_input.empty() && !config.alsa_output.empty()) {
+        config.alsa_input = config.alsa_output;
+      }
+      if (config.alsa_output.empty() && !config.alsa_input.empty()) {
+        config.alsa_output = config.alsa_input;
+      }
+#endif
       if (config.input_device_name.empty() && loaded_state.input_device_name) {
         config.input_device_name = *loaded_state.input_device_name;
       }

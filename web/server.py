@@ -7,6 +7,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -54,9 +55,40 @@ def list_power_tubes() -> list[str]:
     return ["6V6", "6L6", "EL34", "EL84"]
 
 
-def list_audio_devices() -> dict[str, list[str]]:
+def list_alsa_devices(command: str, min_channels: int) -> list[dict[str, str]]:
+    try:
+        result = subprocess.run(
+            [command, "-l"],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+    except (subprocess.SubprocessError, OSError):
+        return []
+
+    devices: list[dict[str, str]] = []
+    pattern = re.compile(r"^card\s+(\d+):\s+([^\s]+)\s+\[(.*?)\],\s+device\s+(\d+):\s+(.*)$")
+    for raw_line in result.stdout.splitlines():
+        line = raw_line.strip()
+        match = pattern.match(line)
+        if not match:
+            continue
+        card = match.group(1)
+        short_name = match.group(2)
+        friendly_name = match.group(3)
+        device = match.group(4)
+        description = match.group(5)
+        value = f"plughw:{card},{device}"
+        label = f"{value} - {friendly_name} ({short_name})"
+        if description:
+            label = f"{label} - {description}"
+        devices.append({"value": value, "label": label})
+    return devices
+
+
+def list_portaudio_devices() -> dict[str, list[dict[str, str]]]:
     if not AMP_STAGE_LIVE_BIN.exists():
-        return {"input_devices": [], "output_devices": []}
+        return {"input_devices": [], "output_devices": [], "backend": "portaudio"}
 
     try:
         result = subprocess.run(
@@ -66,10 +98,10 @@ def list_audio_devices() -> dict[str, list[str]]:
             check=True,
         )
     except (subprocess.SubprocessError, OSError):
-        return {"input_devices": [], "output_devices": []}
+        return {"input_devices": [], "output_devices": [], "backend": "portaudio"}
 
-    input_devices: list[str] = []
-    output_devices: list[str] = []
+    input_devices: list[dict[str, str]] = []
+    output_devices: list[dict[str, str]] = []
     pattern = re.compile(r"^\[(\d+)\]\s+(.*?)\s+in=(\d+)\s+out=(\d+)$")
     for line in result.stdout.splitlines() + result.stderr.splitlines():
         match = pattern.match(line.strip())
@@ -78,15 +110,28 @@ def list_audio_devices() -> dict[str, list[str]]:
         name = match.group(2)
         input_channels = int(match.group(3))
         output_channels = int(match.group(4))
+        entry = {"value": name, "label": name}
         if input_channels >= 2:
-            input_devices.append(name)
+            input_devices.append(entry)
         if output_channels >= 2:
-            output_devices.append(name)
+            output_devices.append(entry)
 
     return {
         "input_devices": input_devices,
         "output_devices": output_devices,
+        "backend": "portaudio",
     }
+
+
+def list_audio_devices() -> dict[str, list[dict[str, str]] | str]:
+    if sys.platform.startswith("linux"):
+        return {
+            "input_devices": list_alsa_devices("arecord", 2),
+            "output_devices": list_alsa_devices("aplay", 2),
+            "backend": "alsa",
+        }
+    return list_portaudio_devices()
+
 
 
 class Handler(BaseHTTPRequestHandler):

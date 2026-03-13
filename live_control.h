@@ -41,6 +41,8 @@ inline const char* EffectTypeName(EffectType type) {
 struct LiveControlState {
   std::optional<std::string> amp_name;
   std::optional<std::string> preamp_name;
+  std::optional<std::string> alsa_input;
+  std::optional<std::string> alsa_output;
   std::optional<std::string> input_device_name;
   std::optional<std::string> output_device_name;
   std::optional<PowerTubeType> power_tube_type;
@@ -120,6 +122,14 @@ inline bool LoadLiveControlState(const std::string& path,
     }
     if (key == "preamp") {
       parsed.preamp_name = value;
+      continue;
+    }
+    if (key == "alsa_input") {
+      parsed.alsa_input = value;
+      continue;
+    }
+    if (key == "alsa_output") {
+      parsed.alsa_output = value;
       continue;
     }
     if (key == "input_device") {
@@ -209,6 +219,12 @@ inline bool SaveLiveControlState(const std::string& path,
   }
   if (state.preamp_name) {
     out << "preamp = " << *state.preamp_name << "\n";
+  }
+  if (state.alsa_input) {
+    out << "alsa_input = " << *state.alsa_input << "\n";
+  }
+  if (state.alsa_output) {
+    out << "alsa_output = " << *state.alsa_output << "\n";
   }
   if (state.input_device_name) {
     out << "input_device = " << *state.input_device_name << "\n";
