@@ -83,7 +83,11 @@ python3 web/server.py --control-file web/live_state.cfg
 │   ├── marshall_jtm45.amp
 │   ├── marshall_plexi_1959.amp
 │   ├── mesa_boogie_mark_iic_plus.amp
+│   ├── mesa_dual_rectifier.amp
+│   ├── peavey_5150.amp
+│   ├── soldano_slo_100.amp
 │   └── vox_ac30_top_boost.amp
+├── preamp.h
 ├── preamp_profile.h
 ├── preamps/
 │   ├── fender_champ.preamp
@@ -95,6 +99,9 @@ python3 web/server.py --control-file web/live_state.cfg
 │   ├── marshall_jtm45.preamp
 │   ├── marshall_plexi_1959.preamp
 │   ├── mesa_boogie_mark_iic_plus.preamp
+│   ├── mesa_dual_rectifier.preamp
+│   ├── peavey_5150.preamp
+│   ├── soldano_slo_100.preamp
 │   └── vox_ac30_top_boost.preamp
 ├── power_stage.h
 ├── effects/
@@ -205,6 +212,9 @@ Current amp profiles:
 - `marshall_jcm800`
 - `marshall_plexi_1959`
 - `mesa_boogie_mark_iic_plus`
+- `mesa_dual_rectifier`
+- `peavey_5150`
+- `soldano_slo_100`
 - `vox_ac30_top_boost`
 
 Current preamp profiles:
@@ -217,6 +227,9 @@ Current preamp profiles:
 - `marshall_jcm800`
 - `marshall_plexi_1959`
 - `mesa_boogie_mark_iic_plus`
+- `mesa_dual_rectifier`
+- `peavey_5150`
+- `soldano_slo_100`
 - `vox_ac30_top_boost`
 
 Power-stage families:

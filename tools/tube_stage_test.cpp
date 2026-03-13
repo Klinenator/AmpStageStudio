@@ -12,6 +12,7 @@
 #include "../effects/klon_effect.h"
 #include "../effects/tubescreamer_effect.h"
 #include "../power_stage.h"
+#include "../preamp.h"
 #include "../preamp_profile.h"
 #include "../tube_stage.h"
 
@@ -527,9 +528,9 @@ int main(int argc, char** argv) {
     preamp_profile = amp_profile->preamp;
   }
 
-  TubeStage stage;
-  stage.SetSampleRate(config.sample_rate_hz);
-  stage.SetSpec(preamp_profile->spec);
+  PreampProcessor preamp;
+  preamp.SetSampleRate(config.sample_rate_hz);
+  preamp.SetProfile(*preamp_profile);
 
   TubeStageControls controls = preamp_profile->defaults;
   if (config.drive_db.has_value()) {
@@ -556,7 +557,7 @@ int main(int argc, char** argv) {
   if (config.presence.has_value()) {
     controls.presence = *config.presence;
   }
-  stage.SetControls(controls);
+  preamp.SetControls(controls);
 
   PowerStage power_stage;
   const bool has_power_stage =
@@ -579,7 +580,7 @@ int main(int argc, char** argv) {
     } else if (config.effect == "tubescreamer") {
       s = tubescreamer.Process(s);
     }
-    s = stage.Process(s);
+    s = preamp.Process(s);
     if (has_power_stage) {
       s = power_stage.Process(s);
     }

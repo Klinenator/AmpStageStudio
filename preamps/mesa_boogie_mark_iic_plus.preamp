@@ -1,5 +1,6 @@
 name = mesa_boogie_mark_iic_plus
 circuit = mark_iic_plus
+topology = multi_stage
 ui_drive_label = Lead Drive
 ui_level_label = Output
 ui_bright_label = Top End

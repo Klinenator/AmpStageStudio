@@ -1,0 +1,8 @@
+# Mesa Dual Rectifier-inspired multi-stage voicing
+name = mesa_dual_rectifier
+circuit = dual_rectifier
+preamp_name = mesa_dual_rectifier
+power_tube_type = 6L6
+power_default_drive_db = 5.25
+power_default_level_db = -1.35
+power_default_bias_trim = 0.0

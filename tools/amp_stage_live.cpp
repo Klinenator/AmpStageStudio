@@ -23,6 +23,7 @@
 #include "../effects/tubescreamer_effect.h"
 #include "../live_control.h"
 #include "../power_stage.h"
+#include "../preamp.h"
 #include "../preamp_profile.h"
 #include "../tube_stage.h"
 
@@ -66,7 +67,7 @@ struct RuntimeSettings {
   std::string amp_name;
   std::string preamp_name;
   EffectType effect = EffectType::kNone;
-  TubeStageSpec stage_spec;
+  PreampProfile preamp_profile;
   TubeStageControls stage_controls;
   bool has_power_stage = false;
   PowerTubeType power_tube_type = PowerTubeType::k6V6;
@@ -76,7 +77,7 @@ struct RuntimeSettings {
 };
 
 struct AppState {
-  TubeStage stage;
+  PreampProcessor preamp;
   PowerStage power_stage;
   KlonEffect effect;
   TubeScreamerEffect tubescreamer;
@@ -363,7 +364,7 @@ std::shared_ptr<RuntimeSettings> ResolveRuntimeSettings(
 
   settings->amp_name = profile.name;
   settings->preamp_name = preamp.name;
-  settings->stage_spec = preamp.spec;
+  settings->preamp_profile = preamp;
   settings->stage_controls = preamp.defaults;
   settings->has_power_stage = profile.has_power_stage;
   settings->power_tube_type = profile.power_tube_type;
@@ -474,7 +475,7 @@ int AudioCallback(const void* input_buffer,
   if (settings) {
     if (state->applied_amp_name != settings->amp_name ||
         state->applied_preamp_name != settings->preamp_name) {
-      state->stage.Reset();
+      state->preamp.Reset();
       state->power_stage.Reset();
       state->effect.Reset();
       state->tubescreamer.Reset();
@@ -493,8 +494,8 @@ int AudioCallback(const void* input_buffer,
       state->applied_power_tube_type = settings->power_tube_type;
     }
 
-    state->stage.SetSpec(settings->stage_spec);
-    state->stage.SetControls(settings->stage_controls);
+    state->preamp.SetProfile(settings->preamp_profile);
+    state->preamp.SetControls(settings->stage_controls);
     if (settings->has_power_stage) {
       state->power_stage.SetTubeType(settings->power_tube_type);
       state->power_stage.SetControls(settings->power_controls);
@@ -515,7 +516,7 @@ int AudioCallback(const void* input_buffer,
       s = state->tubescreamer.Process(s);
     }
 
-    s = state->stage.Process(s);
+    s = state->preamp.Process(s);
     if (settings && settings->has_power_stage) {
       s = state->power_stage.Process(s);
     }
@@ -654,7 +655,7 @@ int main(int argc, char** argv) {
   }
 
   AppState state;
-  state.stage.SetSampleRate(kSampleRateHz);
+  state.preamp.SetSampleRate(kSampleRateHz);
   state.power_stage.SetSampleRate(kSampleRateHz);
   state.effect.SetSampleRate(kSampleRateHz);
   state.tubescreamer.SetSampleRate(kSampleRateHz);

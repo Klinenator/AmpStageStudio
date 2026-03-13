@@ -8,9 +8,27 @@
 
 #include "tube_stage.h"
 
+enum class PreampTopology {
+  kSingleStage,
+  kMultiStage
+};
+
+inline bool ParsePreampTopology(const std::string& value, PreampTopology& out) {
+  if (value == "single_stage" || value == "single") {
+    out = PreampTopology::kSingleStage;
+    return true;
+  }
+  if (value == "multi_stage" || value == "multistage" || value == "multi") {
+    out = PreampTopology::kMultiStage;
+    return true;
+  }
+  return false;
+}
+
 struct PreampProfile {
   std::string name;
   std::string circuit;
+  PreampTopology topology = PreampTopology::kSingleStage;
   std::string ui_drive_label = "Drive";
   std::string ui_level_label = "Level";
   std::string ui_bright_label = "Bright";
@@ -81,6 +99,13 @@ inline std::optional<PreampProfile> LoadPreampProfileFromFile(
     }
     if (key == "circuit") {
       profile.circuit = value;
+      continue;
+    }
+    if (key == "topology") {
+      if (!ParsePreampTopology(value, profile.topology)) {
+        if (error_out) *error_out = "Unknown topology " + value + " in " + path;
+        return std::nullopt;
+      }
       continue;
     }
     if (key == "ui_drive_label") {

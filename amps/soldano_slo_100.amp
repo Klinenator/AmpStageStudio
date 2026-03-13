@@ -1,0 +1,8 @@
+# Soldano SLO-100-inspired multi-stage voicing
+name = soldano_slo_100
+circuit = slo_100
+preamp_name = soldano_slo_100
+power_tube_type = 6L6
+power_default_drive_db = 4.75
+power_default_level_db = -1.25
+power_default_bias_trim = 0.0
