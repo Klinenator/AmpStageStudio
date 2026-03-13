@@ -69,6 +69,122 @@ private:
   OnePoleLPF lpf_;
 };
 
+class Biquad {
+public:
+  void Reset(double value = 0.0) {
+    x1_ = value;
+    x2_ = value;
+    y1_ = value;
+    y2_ = value;
+  }
+
+  double Process(double x) {
+    const double y = b0_ * x + b1_ * x1_ + b2_ * x2_ - a1_ * y1_ - a2_ * y2_;
+    x2_ = x1_;
+    x1_ = x;
+    y2_ = y1_;
+    y1_ = y;
+    return y;
+  }
+
+  void SetPeakingEQ(double sample_rate_hz,
+                    double frequency_hz,
+                    double q,
+                    double gain_db) {
+    const double clamped_frequency =
+        std::clamp(frequency_hz, 10.0, 0.45 * sample_rate_hz);
+    const double clamped_q = std::max(0.1, q);
+    const double a = std::pow(10.0, gain_db / 40.0);
+    const double w0 = 2.0 * kPi * clamped_frequency / sample_rate_hz;
+    const double alpha = std::sin(w0) / (2.0 * clamped_q);
+    const double cos_w0 = std::cos(w0);
+
+    const double b0 = 1.0 + alpha * a;
+    const double b1 = -2.0 * cos_w0;
+    const double b2 = 1.0 - alpha * a;
+    const double a0 = 1.0 + alpha / a;
+    const double a1 = -2.0 * cos_w0;
+    const double a2 = 1.0 - alpha / a;
+    SetNormalized(b0, b1, b2, a0, a1, a2);
+  }
+
+  void SetLowShelf(double sample_rate_hz,
+                   double frequency_hz,
+                   double slope,
+                   double gain_db) {
+    const double clamped_frequency =
+        std::clamp(frequency_hz, 10.0, 0.45 * sample_rate_hz);
+    const double clamped_slope = std::max(0.1, slope);
+    const double a = std::pow(10.0, gain_db / 40.0);
+    const double w0 = 2.0 * kPi * clamped_frequency / sample_rate_hz;
+    const double cos_w0 = std::cos(w0);
+    const double sin_w0 = std::sin(w0);
+    const double alpha =
+        sin_w0 / 2.0 *
+        std::sqrt((a + 1.0 / a) * (1.0 / clamped_slope - 1.0) + 2.0);
+    const double beta = 2.0 * std::sqrt(a) * alpha;
+
+    const double b0 = a * ((a + 1.0) - (a - 1.0) * cos_w0 + beta);
+    const double b1 = 2.0 * a * ((a - 1.0) - (a + 1.0) * cos_w0);
+    const double b2 = a * ((a + 1.0) - (a - 1.0) * cos_w0 - beta);
+    const double a0 = (a + 1.0) + (a - 1.0) * cos_w0 + beta;
+    const double a1 = -2.0 * ((a - 1.0) + (a + 1.0) * cos_w0);
+    const double a2 = (a + 1.0) + (a - 1.0) * cos_w0 - beta;
+    SetNormalized(b0, b1, b2, a0, a1, a2);
+  }
+
+  void SetHighShelf(double sample_rate_hz,
+                    double frequency_hz,
+                    double slope,
+                    double gain_db) {
+    const double clamped_frequency =
+        std::clamp(frequency_hz, 10.0, 0.45 * sample_rate_hz);
+    const double clamped_slope = std::max(0.1, slope);
+    const double a = std::pow(10.0, gain_db / 40.0);
+    const double w0 = 2.0 * kPi * clamped_frequency / sample_rate_hz;
+    const double cos_w0 = std::cos(w0);
+    const double sin_w0 = std::sin(w0);
+    const double alpha =
+        sin_w0 / 2.0 *
+        std::sqrt((a + 1.0 / a) * (1.0 / clamped_slope - 1.0) + 2.0);
+    const double beta = 2.0 * std::sqrt(a) * alpha;
+
+    const double b0 = a * ((a + 1.0) + (a - 1.0) * cos_w0 + beta);
+    const double b1 = -2.0 * a * ((a - 1.0) + (a + 1.0) * cos_w0);
+    const double b2 = a * ((a + 1.0) + (a - 1.0) * cos_w0 - beta);
+    const double a0 = (a + 1.0) - (a - 1.0) * cos_w0 + beta;
+    const double a1 = 2.0 * ((a - 1.0) - (a + 1.0) * cos_w0);
+    const double a2 = (a + 1.0) - (a - 1.0) * cos_w0 - beta;
+    SetNormalized(b0, b1, b2, a0, a1, a2);
+  }
+
+private:
+  static constexpr double kPi = 3.14159265358979323846;
+
+  void SetNormalized(double b0,
+                     double b1,
+                     double b2,
+                     double a0,
+                     double a1,
+                     double a2) {
+    b0_ = b0 / a0;
+    b1_ = b1 / a0;
+    b2_ = b2 / a0;
+    a1_ = a1 / a0;
+    a2_ = a2 / a0;
+  }
+
+  double b0_ = 1.0;
+  double b1_ = 0.0;
+  double b2_ = 0.0;
+  double a1_ = 0.0;
+  double a2_ = 0.0;
+  double x1_ = 0.0;
+  double x2_ = 0.0;
+  double y1_ = 0.0;
+  double y2_ = 0.0;
+};
+
 class TubeStage {
 public:
   void SetSampleRate(double sample_rate_hz) {
@@ -90,12 +206,12 @@ public:
   void Reset() {
     input_hpf_.Reset();
     bright_hpf_.Reset();
-    tone_bass_lpf_.Reset();
-    tone_mid_lpf_.Reset();
-    tone_mid_hpf_.Reset();
-    tone_treble_hpf_.Reset();
+    tone_bass_shelf_.Reset();
+    tone_fixed_mid_scoop_.Reset();
+    tone_mid_peak_.Reset();
+    tone_treble_shelf_.Reset();
     plate_lpf_.Reset();
-    presence_hpf_.Reset();
+    presence_shelf_.Reset();
     output_hpf_.Reset();
     cathode_env_ = 0.0;
   }
@@ -143,46 +259,36 @@ private:
   }
 
   double ApplyToneStackPre(double x) {
-    const double bass = tone_bass_lpf_.Process(x);
-    const double mid_band = tone_mid_hpf_.Process(tone_mid_lpf_.Process(x));
-    const double treble = tone_treble_hpf_.Process(x);
-
-    double y = x;
-    y += bass_mix_ * bass;
-    y += mid_mix_ * mid_band;
-    y += treble_mix_ * treble;
-
-    const double tone_activity =
-        std::abs(bass_mix_) + std::abs(mid_mix_) + std::abs(treble_mix_);
-    const double tone_norm = 1.0 / (1.0 + 0.18 * tone_activity);
-    return y * tone_norm;
+    double y = tone_bass_shelf_.Process(x);
+    y = tone_fixed_mid_scoop_.Process(y);
+    y = tone_mid_peak_.Process(y);
+    y = tone_treble_shelf_.Process(y);
+    return y * tone_stack_loss_lin_;
   }
 
   double ApplyPresencePost(double x) {
-    const double presence = presence_hpf_.Process(x);
-    const double y = x + presence_mix_ * presence;
-    const double tone_norm = 1.0 / (1.0 + 0.15 * std::abs(presence_mix_));
-    return y * tone_norm;
+    return presence_shelf_.Process(x);
   }
 
   void UpdateDerived() {
     input_hpf_.SetCutoff(sample_rate_hz_, spec_.input_hpf_hz);
     bright_hpf_.SetCutoff(sample_rate_hz_, spec_.bright_hpf_hz);
-    tone_bass_lpf_.SetCutoff(sample_rate_hz_, 180.0);
-    tone_mid_lpf_.SetCutoff(sample_rate_hz_, 1400.0);
-    tone_mid_hpf_.SetCutoff(sample_rate_hz_, 350.0);
-    tone_treble_hpf_.SetCutoff(sample_rate_hz_, 1800.0);
+    tone_bass_shelf_.SetLowShelf(
+        sample_rate_hz_, 110.0, 0.70, ControlToDb(controls_.bass, 7.0));
+    tone_fixed_mid_scoop_.SetPeakingEQ(sample_rate_hz_, 750.0, 0.75, -5.0);
+    tone_mid_peak_.SetPeakingEQ(
+        sample_rate_hz_, 750.0, 0.90, ControlToDb(controls_.mid, 9.0));
+    tone_treble_shelf_.SetHighShelf(
+        sample_rate_hz_, 2200.0, 0.75, ControlToDb(controls_.treble, 7.0));
     plate_lpf_.SetCutoff(sample_rate_hz_, spec_.plate_lpf_hz);
-    presence_hpf_.SetCutoff(sample_rate_hz_, 2800.0);
+    presence_shelf_.SetHighShelf(
+        sample_rate_hz_, 3200.0, 0.80, ControlToDb(controls_.presence, 4.5));
     output_hpf_.SetCutoff(sample_rate_hz_, spec_.output_hpf_hz);
 
     drive_lin_ = DbToLin(controls_.drive_db);
     level_lin_ = DbToLin(controls_.level_db);
     bright_gain_ = std::max(0.0, DbToLin(controls_.bright_db) - 1.0);
-    bass_mix_ = ControlToMix(controls_.bass, 0.55);
-    mid_mix_ = ControlToMix(controls_.mid, 0.45);
-    treble_mix_ = ControlToMix(controls_.treble, 0.55);
-    presence_mix_ = ControlToMix(controls_.presence, 0.35);
+    tone_stack_loss_lin_ = DbToLin(-4.8);
 
     const double tau_seconds = 0.020;
     cathode_env_alpha_ = std::exp(-1.0 / (sample_rate_hz_ * tau_seconds));
@@ -192,9 +298,9 @@ private:
     return std::pow(10.0, db / 20.0);
   }
 
-  static double ControlToMix(double value, double max_mix) {
+  static double ControlToDb(double value, double max_db) {
     const double normalized = std::clamp(value, 0.0, 10.0);
-    return ((normalized - 5.0) / 5.0) * max_mix;
+    return ((normalized - 5.0) / 5.0) * max_db;
   }
 
   TubeStageSpec spec_;
@@ -204,21 +310,18 @@ private:
   double drive_lin_ = 1.0;
   double level_lin_ = 1.0;
   double bright_gain_ = 0.0;
-  double bass_mix_ = 0.0;
-  double mid_mix_ = 0.0;
-  double treble_mix_ = 0.0;
-  double presence_mix_ = 0.0;
+  double tone_stack_loss_lin_ = 1.0;
   double cathode_env_ = 0.0;
   double cathode_env_alpha_ = 0.999;
 
   OnePoleHPF input_hpf_;
   OnePoleHPF bright_hpf_;
-  OnePoleLPF tone_bass_lpf_;
-  OnePoleLPF tone_mid_lpf_;
-  OnePoleHPF tone_mid_hpf_;
-  OnePoleHPF tone_treble_hpf_;
+  Biquad tone_bass_shelf_;
+  Biquad tone_fixed_mid_scoop_;
+  Biquad tone_mid_peak_;
+  Biquad tone_treble_shelf_;
   OnePoleLPF plate_lpf_;
-  OnePoleHPF presence_hpf_;
+  Biquad presence_shelf_;
   OnePoleHPF output_hpf_;
 };
 

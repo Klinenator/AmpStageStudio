@@ -79,6 +79,7 @@ def default_control_schema() -> dict[str, str]:
         "mid_label": "",
         "treble_label": "",
         "presence_label": "",
+        "input_hpf_hz": "60.0",
         "note": "These controls follow the current preamp family. Tone stack behavior is circuit-inspired, not an exact schematic solve.",
     }
 
@@ -117,6 +118,7 @@ def load_control_schema(state: dict[str, str]) -> dict[str, str]:
     schema["mid_label"] = preamp_profile.get("ui_mid_label", "")
     schema["treble_label"] = preamp_profile.get("ui_treble_label", "")
     schema["presence_label"] = preamp_profile.get("ui_presence_label", "")
+    schema["input_hpf_hz"] = preamp_profile.get("input_hpf_hz", schema["input_hpf_hz"])
     return schema
 
 

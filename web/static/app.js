@@ -22,6 +22,9 @@ const stateKeys = [
 
 let saveTimer = null;
 let audioBackend = "portaudio";
+let currentControlSchema = {
+  input_hpf_hz: 60.0,
+};
 
 function $(id) {
   return document.getElementById(id);
@@ -31,9 +34,9 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
-function controlToMix(value, maxMix) {
+function controlToDb(value, maxDb) {
   const normalized = clamp(Number(value || 5), 0, 10);
-  return ((normalized - 5) / 5) * maxMix;
+  return ((normalized - 5) / 5) * maxDb;
 }
 
 function onePoleCoefficients(sampleRate, cutoffHz) {
@@ -82,32 +85,465 @@ function onePoleHpfResponse(sampleRate, cutoffHz, frequencyHz) {
   return complexSub({re: 1, im: 0}, onePoleLpfResponse(sampleRate, cutoffHz, frequencyHz));
 }
 
-function responseDbAt(frequencyHz, controls) {
-  const sampleRate = 48000;
-  const bassMix = controlToMix(controls.bass, 0.55);
-  const midMix = controlToMix(controls.mid, 0.45);
-  const trebleMix = controlToMix(controls.treble, 0.55);
-  const presenceMix = controlToMix(controls.presence, 0.35);
+function evaluateTransfer(coeffs, frequencyHz) {
+  const angular = 2 * Math.PI * frequencyHz;
+  const sumPoly = (poly) => {
+    let re = 0;
+    let im = 0;
+    let multiplier = 1;
+    for (let i = 0; i < poly.length; i += 1) {
+      if (i % 2 === 1) {
+        im += multiplier * poly[i];
+        multiplier *= -angular;
+      } else {
+        re += multiplier * poly[i];
+        multiplier *= angular;
+      }
+    }
+    return {re, im};
+  };
 
-  const bass = onePoleLpfResponse(sampleRate, 180, frequencyHz);
-  const mid = complexMul(
-    onePoleHpfResponse(sampleRate, 350, frequencyHz),
-    onePoleLpfResponse(sampleRate, 1400, frequencyHz),
+  const num = sumPoly(coeffs[0]);
+  const den = sumPoly(coeffs[1]);
+  const denMagSq = den.re * den.re + den.im * den.im;
+  return {
+    re: (num.re * den.re + num.im * den.im) / denMagSq,
+    im: (num.im * den.re - num.re * den.im) / denMagSq,
+  };
+}
+
+function applyTaper(position, taper) {
+  const x = clamp(position, 0, 1);
+  if (taper === "LogA") {
+    return x < 0.5 ? x * 0.6 : x * 1.4 - 0.4;
+  }
+  if (taper === "LogB") {
+    return x < 0.5 ? x * 0.2 : x * 1.8 - 0.8;
+  }
+  if (taper === "LogC") {
+    return x < 0.5 ? x * 1.4 : x * 0.6 + 0.4;
+  }
+  return x;
+}
+
+function splitPotValue(value, proportion) {
+  const r2 = proportion * value;
+  return [r2, value - r2];
+}
+
+function getReferenceTonestackDefinition() {
+  const preamp = $("preamp")?.value || "";
+
+  if (preamp === "mesa_boogie_mark_iic_plus") {
+    return {
+      name: "Mesa Mark passive reference",
+      model: "bassman",
+      components: {
+        RIN: 1300,
+        RL: 1e6,
+        RB: 1e6,
+        RM: 25e3,
+        RT: 250e3,
+        R1: 47e3,
+        C1: 500e-12,
+        C2: 22e-9,
+        C3: 22e-9,
+      },
+      tapers: {RB: "LogB", RM: "Linear", RT: "Linear"},
+    };
+  }
+
+  if (preamp === "vox_ac30_top_boost") {
+    return {
+      name: "Vox reference",
+      model: "vox",
+      components: {
+        RIN: 717,
+        RL: 600e3,
+        RB: 1e6,
+        RT: 1e6,
+        R1: 100e3,
+        R2: 10e3,
+        C1: 47e-12,
+        C2: 22e-9,
+        C3: 22e-9,
+      },
+      tapers: {RB: "LogA", RT: "LogA"},
+    };
+  }
+
+  if (preamp === "fender_bassman_5f6a") {
+    return {
+      name: "Bassman 5F6-A reference",
+      model: "bassman",
+      components: {
+        RIN: 1300,
+        RL: 1e6,
+        RB: 1e6,
+        RM: 25e3,
+        RT: 250e3,
+        R1: 56e3,
+        C1: 250e-12,
+        C2: 20e-9,
+        C3: 20e-9,
+      },
+      tapers: {RB: "LogA", RM: "Linear", RT: "Linear"},
+    };
+  }
+
+  if ([
+    "marshall_jtm45",
+    "marshall_plexi_1959",
+    "marshall_jcm800",
+    "soldano_slo_100",
+    "peavey_5150",
+    "mesa_dual_rectifier",
+  ].includes(preamp)) {
+    return {
+      name: "Marshall reference",
+      model: "bassman",
+      components: {
+        RIN: 1300,
+        RL: 517e3,
+        RB: 1e6,
+        RM: 25e3,
+        RT: 220e3,
+        R1: 33e3,
+        C1: 470e-12,
+        C2: 22e-9,
+        C3: 22e-9,
+      },
+      tapers: {RB: "LogB", RM: "Linear", RT: "Linear"},
+    };
+  }
+
+  if ([
+    "fender_deluxe_reverb",
+    "fender_twin_reverb_ab763",
+    "fender_princeton",
+  ].includes(preamp)) {
+    return {
+      name: "Fender TMB reference",
+      model: "fender_tmb",
+      components: {
+        RIN: 38e3,
+        RL: 1e6,
+        RB: 250e3,
+        RM: 10e3,
+        RT: 250e3,
+        R1: 100e3,
+        C1: 250e-12,
+        C2: 100e-9,
+        C3: 47e-9,
+      },
+      tapers: {RB: "LogA", RM: "Linear", RT: "LogA"},
+    };
+  }
+
+  return null;
+}
+
+function getReferenceControlValue(controls, key) {
+  return clamp(Number(controls[key] ?? 5), 0, 10) / 10;
+}
+
+function bassmanReferenceCoefficients(definition, controls) {
+  const {components, tapers} = definition;
+  const [RT2, RT1] = splitPotValue(components.RT, applyTaper(getReferenceControlValue(controls, "treble"), tapers.RT));
+  const [RM2, RM1] = splitPotValue(components.RM, applyTaper(getReferenceControlValue(controls, "mid"), tapers.RM));
+  const [RB2, RB1] = splitPotValue(components.RB, applyTaper(getReferenceControlValue(controls, "bass"), tapers.RB));
+  const {RIN, R1, RL, C1, C2, C3} = components;
+
+  const t0 = RT1 * RT2;
+  const t1 = RIN + RT1;
+  const t2 = RM2 + RT2;
+  const t3 = RT1 + RT2;
+  const t4 = RIN + RM2;
+  const t5 = R1 + t3;
+  const t6 = RB1 + RM1;
+  const t7 = C2 * t6;
+  const t8 = C3 * t7;
+  const t9 = RIN * RM2;
+  const t10 = RL + t2;
+  const t11 = RL + RT2;
+  const t12 = RIN + RL;
+  const t13 = RL * t4 + t9;
+  const t14 = t4 * (RL + RT1) + t9;
+  const t15 = RL + t1;
+  const t16 = RB1 * t15;
+  const t17 = C2 + C3;
+  const t18 = R1 * t17;
+  const t19 = C2 * t11;
+  const t20 = t2 + t6;
+  const t21 = C1 * RL;
+  const t22 = C3 * RM2;
+  const t23 = t10 + t6;
+  const t24 = RM2 + t6;
+
+  const denAIm = C1 * t8 * (R1 * t1 * t2 + RIN * (RM2 * t3 + t0) + RL * (R1 * t3 + t4 * t5) + RM2 * t0);
+  const denBRe = C1 * (RT2 * (C2 * (RIN * RL + RIN * RT1 + t15 * (RM1 + RM2) + t16) + C3 * t14) + t18 * (RL * RM2 + RL * t1 + RM1 * t15 + RM2 * RT1 + RT2 * t15 + t16 + t9))
+    + C1 * (C2 * RT1 * (RB1 * t12 + RM1 * t12 + t13) + C3 * (RB1 * t14 + RM1 * t14 + RT1 * t13))
+    + t8 * (R1 * t10 + t11 * t4 + t9);
+  const denCIm = C1 * RT1 * t23 + RIN * t23 * (C1 + t17) + RM1 * t19 + t18 * t23 + t19 * (RB1 + RM2) + t20 * t21 + t22 * (t11 + t6);
+  const denDRe = t23;
+  const numAIm = t21 * t8 * (R1 * RT2 + RM2 * t5);
+  const numBRe = RL * (C1 * (C2 * t24 * t3 + t18 * t20) + t22 * (C1 * (t3 + t6) + t7));
+  const numCIm = RL * (C1 * RT2 + t22 + t24 * (C1 + C2));
+  const numDRe = 0;
+
+  return [
+    [numDRe, numCIm, numBRe, numAIm],
+    [denDRe, denCIm, denBRe, denAIm],
+  ];
+}
+
+function fenderTmbReferenceCoefficients(definition, controls) {
+  const {components, tapers} = definition;
+  const [RT2, RT1] = splitPotValue(components.RT, applyTaper(getReferenceControlValue(controls, "treble"), tapers.RT));
+  const RM = splitPotValue(components.RM, applyTaper(getReferenceControlValue(controls, "mid"), tapers.RM))[0];
+  const RB = splitPotValue(components.RB, applyTaper(getReferenceControlValue(controls, "bass"), tapers.RB))[0];
+  const {RIN, R1, RL, C1, C2, C3} = components;
+
+  const t0 = RT1 * RT2;
+  const t1 = RIN + RT1;
+  const t2 = RM + RT2;
+  const t3 = R1 * t2;
+  const t4 = RT1 + RT2;
+  const t5 = RIN + RM;
+  const t6 = R1 + t4;
+  const t7 = C2 * C3;
+  const t8 = C1 * RB * t7;
+  const t9 = C2 + C3;
+  const t10 = RL + t2;
+  const t11 = R1 * t10;
+  const t12 = RIN + RL;
+  const t13 = RIN * RL + RM * t12;
+  const t14 = RT1 * t13 + RT2 * t5 + t11;
+  const t15 = RL + t1;
+  const t16 = R1 * t15;
+  const t17 = RL + RT2;
+  const t18 = C3 * RM;
+  const t19 = RB + RM;
+  const t20 = C2 * t19;
+  const t21 = RB + t10;
+  const t22 = RB + t2;
+  const t23 = C1 + C2;
+
+  const denAIm = t8 * (RIN * (RM * t4 + t0) + RL * (R1 * t4 + t5 * t6) + RM * t0 + t1 * t3);
+  const denBRe = C1 * t9 * (RIN * (RT2 * (RL + RM) + t11) + RL * (RM * RT2 + t3) + RT1 * t14)
+    + RB * (C1 * (C2 * (RT1 * t12 + RT2 * t15 + t16) + C3 * (RT1 * t5 + t13 + t16)) + t14 * t7);
+  const denCIm = C1 * (RB * (RL + RT1) + RIN * t22 + RL * (t4 + t5) + RT1 * t2)
+    + t17 * t20 + t18 * (RB + t17) + t21 * t9 * (R1 + RIN);
+  const denDRe = t21;
+  const numAIm = RL * t8 * (R1 * RT2 + RM * t6);
+  const numBRe = RL * (C1 * (R1 * t22 * t9 + t4 * (t18 + t20)) + RB * t18 * t23);
+  const numCIm = RL * (C1 * RT2 + t18 + t19 * t23);
+  const numDRe = 0;
+
+  return [
+    [numDRe, numCIm, numBRe, numAIm],
+    [denDRe, denCIm, denBRe, denAIm],
+  ];
+}
+
+function voxReferenceCoefficients(definition, controls) {
+  const {components, tapers} = definition;
+  const [RT2, RT1] = splitPotValue(components.RT, applyTaper(getReferenceControlValue(controls, "treble"), tapers.RT));
+  const [RB1, RB2] = splitPotValue(components.RB, applyTaper(getReferenceControlValue(controls, "bass"), tapers.RB));
+  const {RIN, R1, R2, RL, C1, C2, C3} = components;
+
+  const t0 = R2 * RB2;
+  const t1 = RIN * t0;
+  const t2 = RIN + RT1;
+  const t3 = R2 + RB2;
+  const t4 = RT2 * t3;
+  const t5 = RIN * t3 + t0;
+  const t6 = RT1 + RT2;
+  const t7 = C2 * RB1;
+  const t8 = C1 * C3 * t7;
+  const t9 = C2 + C3;
+  const t10 = RIN * RL;
+  const t11 = RIN + RL;
+  const t12 = RB2 * t11;
+  const t13 = R2 * (t10 + t12);
+  const t14 = R2 * RL;
+  const t15 = R2 + RL;
+  const t16 = RIN * (RL + RT1);
+  const t17 = RB2 * t16;
+  const t18 = RL + t2;
+  const t19 = R1 * t3;
+  const t20 = t18 * t19;
+  const t21 = RB2 * t18 + t16;
+  const t22 = RL + RT2;
+  const t23 = C2 * RT1;
+  const t24 = RB1 + RT2;
+  const t25 = RL * (C1 * t24 + t7) + RT2 * t7;
+  const t26 = RB1 + t22;
+  const t27 = R2 * t26 + RB2 * (t15 + t24);
+  const t28 = R1 * t9;
+  const t29 = C1 + t9;
+  const t30 = C1 + C2;
+
+  const denAIm = t8 * (R1 * t2 * (t0 + t4) + RL * (R1 * (t0 + t3 * (RIN + t6)) + t5 * t6) + RT1 * (RT2 * t5 + t1) + RT2 * t1);
+  const denBRe = C1 * t9 * (R1 * (RB2 * (t14 + t15 * t2) + t14 * t2) + RB2 * RT1 * t10 + RT1 * t13 + RT2 * (R2 * t21 + t17 + t20))
+    + RB1 * (C1 * (C2 * t18 * t4 + C3 * t17 + R2 * (C3 * t21 + t11 * t23) + t12 * t23 + t20 * t9) + C2 * C3 * (R1 * (RB2 * t15 + t14) + R2 * RT2 * (R1 + RIN) + RB2 * (RIN * t22 + RT2 * (R1 + R2)) + t13));
+  const denCIm = R2 * t25 + RB2 * (R2 * (C2 * RT2 + C3 * t26 + RL * t30) + t25) + t27 * t28 + t27 * (C1 * RT1 + RIN * t29);
+  const denDRe = t0 + t26 * t3;
+  const numAIm = RL * t8 * (RT2 * (t0 + t19) + t0 * (R1 + RT1));
+  const numBRe = RL * (C1 * (C2 * t6 * (R2 * (RB1 + RB2) + RB1 * RB2) + t28 * (R2 * (RB2 + t24) + RB2 * t24)) + C3 * t0 * (C1 * (RB1 + t6) + t7));
+  const numCIm = RL * (t0 * t29 + t3 * (C1 * RT2 + RB1 * t30));
+  const numDRe = 0;
+
+  return [
+    [numDRe, numCIm, numBRe, numAIm],
+    [denDRe, denCIm, denBRe, denAIm],
+  ];
+}
+
+function referenceResponseDbAt(frequencyHz, controls) {
+  const definition = getReferenceTonestackDefinition();
+  if (!definition) {
+    return null;
+  }
+
+  let coeffs = null;
+  if (definition.model === "bassman") {
+    coeffs = bassmanReferenceCoefficients(definition, controls);
+  } else if (definition.model === "fender_tmb") {
+    coeffs = fenderTmbReferenceCoefficients(definition, controls);
+  } else if (definition.model === "vox") {
+    coeffs = voxReferenceCoefficients(definition, controls);
+  }
+
+  if (!coeffs) {
+    return null;
+  }
+
+  const h = evaluateTransfer(coeffs, frequencyHz);
+  return 20 * Math.log10(Math.max(1e-6, complexMagnitude(h)));
+}
+
+function biquadResponse(coeffs, frequencyHz, sampleRate) {
+  const omega = 2 * Math.PI * frequencyHz / sampleRate;
+  const z1 = {re: Math.cos(omega), im: -Math.sin(omega)};
+  const z2 = complexMul(z1, z1);
+  const num = complexAdd(
+    complexAdd({re: coeffs.b0, im: 0}, complexScale(z1, coeffs.b1)),
+    complexScale(z2, coeffs.b2),
   );
-  const treble = onePoleHpfResponse(sampleRate, 1800, frequencyHz);
-  const presence = onePoleHpfResponse(sampleRate, 2800, frequencyHz);
+  const den = complexAdd(
+    complexAdd({re: 1, im: 0}, complexScale(z1, coeffs.a1)),
+    complexScale(z2, coeffs.a2),
+  );
+  const denMagSq = den.re * den.re + den.im * den.im;
+  return {
+    re: (num.re * den.re + num.im * den.im) / denMagSq,
+    im: (num.im * den.re - num.re * den.im) / denMagSq,
+  };
+}
 
-  let pre = {re: 1, im: 0};
-  pre = complexAdd(pre, complexScale(bass, bassMix));
-  pre = complexAdd(pre, complexScale(mid, midMix));
-  pre = complexAdd(pre, complexScale(treble, trebleMix));
-  const toneActivity = Math.abs(bassMix) + Math.abs(midMix) + Math.abs(trebleMix);
-  pre = complexScale(pre, 1 / (1 + 0.18 * toneActivity));
+function normalizeBiquad(b0, b1, b2, a0, a1, a2) {
+  return {
+    b0: b0 / a0,
+    b1: b1 / a0,
+    b2: b2 / a0,
+    a1: a1 / a0,
+    a2: a2 / a0,
+  };
+}
 
-  let post = complexAdd({re: 1, im: 0}, complexScale(presence, presenceMix));
-  post = complexScale(post, 1 / (1 + 0.15 * Math.abs(presenceMix)));
+function makePeakingEq(sampleRate, frequencyHz, q, gainDb) {
+  const frequency = clamp(frequencyHz, 10, 0.45 * sampleRate);
+  const qq = Math.max(0.1, q);
+  const a = 10 ** (gainDb / 40);
+  const w0 = 2 * Math.PI * frequency / sampleRate;
+  const alpha = Math.sin(w0) / (2 * qq);
+  const cosW0 = Math.cos(w0);
+  return normalizeBiquad(
+    1 + alpha * a,
+    -2 * cosW0,
+    1 - alpha * a,
+    1 + alpha / a,
+    -2 * cosW0,
+    1 - alpha / a,
+  );
+}
 
-  const total = complexMul(pre, post);
+function makeLowShelf(sampleRate, frequencyHz, slope, gainDb) {
+  const frequency = clamp(frequencyHz, 10, 0.45 * sampleRate);
+  const s = Math.max(0.1, slope);
+  const a = 10 ** (gainDb / 40);
+  const w0 = 2 * Math.PI * frequency / sampleRate;
+  const cosW0 = Math.cos(w0);
+  const sinW0 = Math.sin(w0);
+  const alpha = sinW0 / 2 * Math.sqrt((a + 1 / a) * (1 / s - 1) + 2);
+  const beta = 2 * Math.sqrt(a) * alpha;
+  return normalizeBiquad(
+    a * ((a + 1) - (a - 1) * cosW0 + beta),
+    2 * a * ((a - 1) - (a + 1) * cosW0),
+    a * ((a + 1) - (a - 1) * cosW0 - beta),
+    (a + 1) + (a - 1) * cosW0 + beta,
+    -2 * ((a - 1) + (a + 1) * cosW0),
+    (a + 1) + (a - 1) * cosW0 - beta,
+  );
+}
+
+function makeHighShelf(sampleRate, frequencyHz, slope, gainDb) {
+  const frequency = clamp(frequencyHz, 10, 0.45 * sampleRate);
+  const s = Math.max(0.1, slope);
+  const a = 10 ** (gainDb / 40);
+  const w0 = 2 * Math.PI * frequency / sampleRate;
+  const cosW0 = Math.cos(w0);
+  const sinW0 = Math.sin(w0);
+  const alpha = sinW0 / 2 * Math.sqrt((a + 1 / a) * (1 / s - 1) + 2);
+  const beta = 2 * Math.sqrt(a) * alpha;
+  return normalizeBiquad(
+    a * ((a + 1) + (a - 1) * cosW0 + beta),
+    -2 * a * ((a - 1) + (a + 1) * cosW0),
+    a * ((a + 1) + (a - 1) * cosW0 - beta),
+    (a + 1) - (a - 1) * cosW0 + beta,
+    2 * ((a - 1) - (a + 1) * cosW0),
+    (a + 1) - (a - 1) * cosW0 - beta,
+  );
+}
+
+function currentResponseDbAt(frequencyHz, controls) {
+  const sampleRate = 48000;
+  const inputHpfHz = Number(currentControlSchema.input_hpf_hz || 60);
+  const inputHpf = onePoleHpfResponse(sampleRate, inputHpfHz, frequencyHz);
+  const bass = biquadResponse(
+    makeLowShelf(sampleRate, 110, 0.70, controlToDb(controls.bass, 7.0)),
+    frequencyHz,
+    sampleRate,
+  );
+  const fixedScoop = biquadResponse(
+    makePeakingEq(sampleRate, 750, 0.75, -5.0),
+    frequencyHz,
+    sampleRate,
+  );
+  const mid = biquadResponse(
+    makePeakingEq(sampleRate, 750, 0.90, controlToDb(controls.mid, 9.0)),
+    frequencyHz,
+    sampleRate,
+  );
+  const treble = biquadResponse(
+    makeHighShelf(sampleRate, 2200, 0.75, controlToDb(controls.treble, 7.0)),
+    frequencyHz,
+    sampleRate,
+  );
+  const presence = biquadResponse(
+    makeHighShelf(sampleRate, 3200, 0.80, controlToDb(controls.presence, 4.5)),
+    frequencyHz,
+    sampleRate,
+  );
+
+  let total = inputHpf;
+  total = complexMul(total, bass);
+  total = complexMul(total, fixedScoop);
+  total = complexMul(total, mid);
+  total = complexMul(total, treble);
+  total = complexMul(total, presence);
+  total = complexScale(total, 10 ** (-4.8 / 20));
   return 20 * Math.log10(Math.max(1e-6, complexMagnitude(total)));
 }
 
@@ -119,9 +555,28 @@ function buildToneResponseCurve(controls) {
   for (let i = 0; i < steps; i += 1) {
     const t = i / (steps - 1);
     const freq = minFreq * (maxFreq / minFreq) ** t;
-    points.push({freq, db: responseDbAt(freq, controls)});
+    points.push({freq, db: currentResponseDbAt(freq, controls)});
   }
   return points;
+}
+
+function buildReferenceToneResponseCurve(controls) {
+  const definition = getReferenceTonestackDefinition();
+  if (!definition) {
+    return null;
+  }
+
+  const points = [];
+  const minFreq = 10;
+  const maxFreq = 20000;
+  const steps = 180;
+  for (let i = 0; i < steps; i += 1) {
+    const t = i / (steps - 1);
+    const freq = minFreq * (maxFreq / minFreq) ** t;
+    const db = referenceResponseDbAt(freq, controls);
+    points.push({freq, db});
+  }
+  return {name: definition.name, points};
 }
 
 function valueOrDefault(id, fallback) {
@@ -138,9 +593,9 @@ function drawTonePlot() {
   const margin = {top: 18, right: 18, bottom: 28, left: 44};
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
-  const dbMin = -18;
+  const dbMin = -30;
   const dbMax = 12;
-  const freqMin = 20;
+  const freqMin = 10;
   const freqMax = 20000;
 
   const currentCurve = buildToneResponseCurve({
@@ -149,11 +604,16 @@ function drawTonePlot() {
     treble: valueOrDefault("treble", 5),
     presence: valueOrDefault("presence", 5),
   });
-  const referenceCurve = buildToneResponseCurve({
+  const referenceDefinition = getReferenceTonestackDefinition();
+  const referenceCurve = buildReferenceToneResponseCurve({
+    bass: valueOrDefault("bass", 5),
+    mid: valueOrDefault("mid", 5),
+    treble: valueOrDefault("treble", 5),
+  });
+  const referenceNoonCurve = buildReferenceToneResponseCurve({
     bass: 5,
     mid: 5,
     treble: 5,
-    presence: 5,
   });
 
   const xForFreq = (freq) => {
@@ -170,8 +630,8 @@ function drawTonePlot() {
     return `${index === 0 ? "M" : "L"} ${x} ${y}`;
   }).join(" ");
 
-  const freqLines = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
-  const dbLines = [-18, -12, -6, 0, 6, 12];
+  const freqLines = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000];
+  const dbLines = [-30, -24, -18, -12, -6, 0, 6, 12];
 
   let markup = "";
   for (const db of dbLines) {
@@ -188,7 +648,12 @@ function drawTonePlot() {
   }
 
   markup += `<rect x="${margin.left}" y="${margin.top}" width="${innerWidth}" height="${innerHeight}" fill="none" stroke="rgba(31,23,19,0.26)" stroke-width="1.2" />`;
-  markup += `<path d="${pathForCurve(referenceCurve)}" fill="none" stroke="rgba(31,23,19,0.45)" stroke-width="2" stroke-dasharray="5 5" />`;
+  if (referenceCurve) {
+    markup += `<path d="${pathForCurve(referenceCurve.points)}" fill="none" stroke="#356e9f" stroke-width="2.5" />`;
+  }
+  if (referenceNoonCurve) {
+    markup += `<path d="${pathForCurve(referenceNoonCurve.points)}" fill="none" stroke="rgba(31,23,19,0.45)" stroke-width="2" stroke-dasharray="5 5" />`;
+  }
   markup += `<path d="${pathForCurve(currentCurve)}" fill="none" stroke="#c56c24" stroke-width="3" />`;
 
   const note = $("tone_plot_note");
@@ -197,8 +662,13 @@ function drawTonePlot() {
     const midLabel = $("tone_mid_label")?.textContent || "Mid";
     const trebleLabel = $("tone_treble_label")?.textContent || "Treble";
     const presenceLabel = $("tone_presence_label")?.textContent || "Presence";
-    note.textContent =
-      `Approximate response of AmpStageStudio's modeled ${bassLabel}/${midLabel}/${trebleLabel}/${presenceLabel} controls. Useful for comparison, but not a schematic solver.`;
+    if (referenceDefinition) {
+      note.textContent =
+        `Orange shows AmpStageStudio's current DSP. Blue shows a ${referenceDefinition.name} curve using YATSC-derived component values at the same knob positions, with the dashed line at noon.`;
+    } else {
+      note.textContent =
+        `Approximate response of AmpStageStudio's modeled ${bassLabel}/${midLabel}/${trebleLabel}/${presenceLabel} controls. No YATSC reference family is assigned for this preamp yet.`;
+    }
   }
 
   svg.innerHTML = markup;
@@ -263,6 +733,10 @@ function syncOutput(id, value) {
 
 async function refreshControlSchema() {
   const schema = await fetchJson("/api/control-schema");
+  currentControlSchema = {
+    ...currentControlSchema,
+    ...schema,
+  };
   $("preamp_panel_title").textContent = schema.panel_title || "Preamp";
   $("preamp_drive_label").textContent = schema.drive_label || "Drive";
   $("preamp_level_label").textContent = schema.level_label || "Level";

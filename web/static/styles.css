@@ -120,6 +120,10 @@ output {
 }
 
 .legend-swatch-reference {
+  background: #356e9f;
+}
+
+.legend-swatch-noon {
   background: rgba(31, 23, 19, 0.45);
 }
 
